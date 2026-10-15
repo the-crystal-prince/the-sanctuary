@@ -48,7 +48,19 @@ function setControls(connected) {
   cameraButton.disabled = !connected;
   leaveButton.disabled = !connected;
   joinButton.disabled = connected || connecting;
+  joinButton.textContent = connecting ? "Joining…" : "Join";
   nameInput.disabled = connected || connecting || nameLocked;
+  document.body.classList.toggle("in-room", connected);
+}
+
+// First letter of a name, for the circle shown when the camera is off.
+function initialOf(name) {
+  const first = Array.from(String(name || "").trim())[0];
+  return first ? first.toUpperCase() : "·";
+}
+
+function setButtonLabel(button, text) {
+  button.querySelector(".lbl").textContent = text;
 }
 
 // Only LINE profile pictures are shown.
@@ -82,21 +94,36 @@ function pictureFromMetadata(participant) {
 
 function setMicLabel(on) {
   micButton.classList.toggle("active", on);
-  micButton.innerHTML = on
-    ? '<span class="symbol">🎙</span>Mic on'
-    : '<span class="symbol">🔇</span>Mic off';
+  micButton.dataset.on = String(on);
+  setButtonLabel(micButton, on ? "Mic on" : "Mic off");
 }
 
 function setCameraLabel(on) {
   cameraButton.classList.toggle("active", on);
-  cameraButton.innerHTML = on
-    ? '<span class="symbol">◉</span>Camera on'
-    : '<span class="symbol">◯</span>Camera off';
+  cameraButton.dataset.on = String(on);
+  setButtonLabel(cameraButton, on ? "Camera on" : "Camera off");
+}
+
+// The start button shows one of: ready, running, paused, done.
+function setTimerButton(state) {
+  startButton.dataset.state = state;
+  setButtonLabel(
+    startButton,
+    {
+      ready: "Start",
+      running: "Pause",
+      paused: "Resume",
+      done: "Restart",
+    }[state],
+  );
 }
 
 function updateCount() {
-  const total = room ? room.remoteParticipants.size + 1 : 0;
-  count.textContent = `${total} / ${MAX_PEOPLE} people`;
+  if (!room) {
+    count.textContent = `Up to ${MAX_PEOPLE} people`;
+    return;
+  }
+  count.textContent = `${room.remoteParticipants.size + 1} of ${MAX_PEOPLE} here`;
 }
 
 function showLocalVideo(show) {
@@ -131,7 +158,7 @@ function participantCard(participant) {
 
   const face = document.createElement("span");
   face.className = "camera-placeholder";
-  face.textContent = "🧘🏻";
+  face.textContent = initialOf(participant.name);
   avatar.append(face);
   setAvatarPhoto(avatar, pictureFromMetadata(participant));
 
@@ -294,6 +321,7 @@ async function joinRoom() {
     await room.connect(data.url, data.token);
 
     localName.textContent = participantName;
+    placeholder.textContent = initialOf(participantName);
     localStatus.textContent = "Connected";
     if (lineProfile) {
       setAvatarPhoto(localPerson.querySelector(".avatar"), lineProfile.pictureUrl);
@@ -333,9 +361,7 @@ async function joinRoom() {
       problems.push("camera");
     }
     setCameraLabel(cameraEnabled);
-    localStatus.textContent = cameraEnabled
-      ? "Connected · camera on"
-      : "Connected";
+    localStatus.textContent = cameraEnabled ? "Camera on" : "Camera off";
 
     message.textContent = problems.length
       ? `You're connected, but the ${problems.join(" and ")} couldn't start. Check your browser permissions, then use the buttons below.`
@@ -358,6 +384,7 @@ async function joinRoom() {
       ". Check the server and camera/microphone permissions.";
   } finally {
     connecting = false;
+    joinButton.textContent = "Join";
     joinButton.disabled = !!room;
     nameInput.disabled = !!room || nameLocked;
   }
@@ -400,10 +427,10 @@ async function toggleCamera() {
 
     if (cameraEnabled) {
       attachLocalVideo();
-      localStatus.textContent = "Connected · camera on";
+      localStatus.textContent = "Camera on";
     } else {
       showLocalVideo(false);
-      localStatus.textContent = "Connected · camera off";
+      localStatus.textContent = "Camera off";
     }
   } catch (error) {
     message.textContent = "Camera issue: " + error.message;
@@ -416,20 +443,31 @@ function renderClock() {
   const minutes = String(Math.floor(seconds / 60)).padStart(2, "0");
   const secs = String(seconds % 60).padStart(2, "0");
   clock.textContent = `${minutes}:${secs}`;
+  // The liquid in the orb rises as the session goes on.
+  if (window.sanctuaryOrb) {
+    window.sanctuaryOrb.setProgress(1 - seconds / SESSION_SECONDS);
+  }
+}
+
+function setOrbActive(active) {
+  if (window.sanctuaryOrb) window.sanctuaryOrb.setActive(active);
 }
 
 function toggleTimer() {
   if (running) {
     clearInterval(interval);
     running = false;
-    startButton.innerHTML = '<span class="symbol">▶</span>Resume';
+    setTimerButton("paused");
+    setOrbActive(false);
     timerState.textContent = "Paused";
     return;
   }
 
   if (seconds === 0) seconds = SESSION_SECONDS;
+  renderClock();
   running = true;
-  startButton.innerHTML = '<span class="symbol">Ⅱ</span>Pause';
+  setTimerButton("running");
+  setOrbActive(true);
   timerState.textContent = "A quiet moment together";
 
   interval = setInterval(() => {
@@ -439,7 +477,8 @@ function toggleTimer() {
     if (seconds === 0) {
       clearInterval(interval);
       running = false;
-      startButton.innerHTML = '<span class="symbol">↻</span>Restart';
+      setTimerButton("done");
+      setOrbActive(false);
       timerState.textContent = "Session complete";
     }
   }, 1000);
@@ -475,7 +514,7 @@ async function initLine() {
         localPerson.querySelector(".avatar"),
         lineProfile.pictureUrl,
       );
-      message.textContent = "Tap Join room to connect with others.";
+      message.textContent = "Tap Join to enter the room.";
     } else {
       lineStatus.textContent = "Join as a guest, or sign in with LINE.";
       lineLogin.hidden = false;
