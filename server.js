@@ -117,6 +117,7 @@ app.post("/get-token", async (req, res) => {
       roomJoin: true,
       room: roomName.trim(),
       canPublish: true,
+      canPublishData: true, // chat, blessings and the shared timer
       canSubscribe: true,
     });
 
