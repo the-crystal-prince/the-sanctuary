@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#10251e">
+<title>The Sanctuary</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+<div class="brand">✳ THE SANCTUARY</div>
+<h1>Meditate together</h1>
+<div class="subtitle">A little peace, shared with others.</div>
+</header>
+<main>
+<section class="room">
+<div class="room-top">
+<strong>🌲 Forest Room</strong>
+<span class="pill" id="count">0 / 8 people</span>
+</div>
+<div class="join-row">
+<input id="participantName" type="text" maxlength="50" placeholder="Your name" aria-label="Your name">
+<button class="join-button" id="join" type="button">Join room</button>
+</div>
+<div class="people" id="people">
+<div class="person" id="localPerson">
+<div class="avatar">
+<video id="localVideo" autoplay playsinline muted hidden></video>
+<span class="camera-placeholder" id="cameraPlaceholder">🧘🏻</span>
+</div>
+<div class="name" id="localName">You</div>
+<div class="status" id="localStatus">Not connected</div>
+</div>
+</div>
+<div class="timer">
+<div class="timer-label">MEDITATION TIMER · THIS DEVICE</div>
+<div id="clock">20:00</div>
+<div id="timerState">Ready when you are</div>
+</div>
+<div class="controls">
+<button class="control" id="mic" type="button" disabled><span class="symbol">🎙</span>Mic on</button>
+<button class="control" id="camera" type="button" disabled><span class="symbol">◉</span>Camera on</button>
+<button class="control" id="start" type="button"><span class="symbol">▶</span>Start</button>
+<button class="control leave" id="leave" type="button" disabled><span class="symbol">↗</span>Leave</button>
+</div>
+<p class="note" id="message">Enter your name and tap Join room to connect with others. Camera and microphone permission may be requested.</p>
+</section>
+<h2>Your room, your rhythm</h2>
+<div class="feature">🌿 <strong>Speak freely</strong><br><span>People in the same Forest Room can hear and see one another.</span></div>
+<div class="feature">✨ <strong>Gentle speaker glow</strong><br><span>A gentle glow marks participants who are speaking.</span></div>
+<div class="feature">⏱️ <strong>A quiet moment</strong><br><span>The meditation timer runs independently on each device.</span></div>
+<footer>THE SANCTUARY · A SPACE TO BE TOGETHER</footer>
+</main>
+<script type="module" src="app.js"></script>
+</body>
+</html>
