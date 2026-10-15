@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0d100c">
+<meta name="theme-color" content="#04060c">
 <title>The Sanctuary</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -12,8 +12,10 @@
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 </head>
 <body>
-<main class="stage">
-  <header class="top">
+<div class="sky" aria-hidden="true"></div>
+
+<main class="stage" id="stage">
+  <header class="top ui">
     <span class="wordmark">The Sanctuary</span>
     <span class="count" id="count">Up to 8 people</span>
   </header>
@@ -23,14 +25,26 @@
       <canvas id="orb" width="640" height="640" aria-hidden="true"></canvas>
       <div class="orb-fallback" id="orbFallback" hidden></div>
     </div>
-    <h1>Forest Room</h1>
+    <h1 class="ui">Forest Room</h1>
+
+    <div class="people" id="people">
+      <div class="person" id="localPerson">
+        <div class="avatar">
+          <video id="localVideo" autoplay playsinline muted hidden></video>
+          <span class="camera-placeholder" id="cameraPlaceholder">Y</span>
+        </div>
+        <div class="name" id="localName">You</div>
+        <div class="status" id="localStatus">Not connected</div>
+      </div>
+    </div>
+
     <div class="timer">
       <div id="clock" role="timer">20:00</div>
-      <div id="timerState">Ready when you are</div>
+      <div id="timerState" class="ui">Ready when you are</div>
     </div>
   </section>
 
-  <section class="join" aria-label="Join the room">
+  <section class="join ui" aria-label="Join the room">
     <div class="line-row" id="lineRow" hidden>
       <span id="lineStatus"></span>
       <button class="line-button" id="lineLogin" type="button" hidden>Log in with LINE</button>
@@ -41,46 +55,41 @@
     </div>
   </section>
 
-  <div class="people" id="people">
-    <div class="person" id="localPerson">
-      <div class="avatar">
-        <video id="localVideo" autoplay playsinline muted hidden></video>
-        <span class="camera-placeholder" id="cameraPlaceholder">Y</span>
-      </div>
-      <div class="name" id="localName">You</div>
-      <div class="status" id="localStatus">Not connected</div>
-    </div>
-  </div>
+  <p class="note ui" id="message" role="status">Your browser will ask to use the camera and microphone when you join.</p>
+  <p class="foot ui">Each timer runs on your own device. Once you're in, tap empty space to hide the controls.</p>
 
-  <p class="note" id="message" role="status">Your browser will ask to use the camera and microphone when you join.</p>
-  <p class="foot">Each timer runs on your own device.</p>
-  <nav class="controls" aria-label="Room controls">
-    <button class="control" id="mic" type="button" disabled data-on="true">
-      <span class="ico">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/><path class="slash" d="M4 4l16 16"/></svg>
-      </span>
-      <span class="lbl">Mic on</span>
+  <nav class="controls ui" id="controls" aria-label="Room controls">
+    <button class="rail-toggle" id="railToggle" type="button" aria-expanded="true" aria-controls="railButtons" aria-label="Minimize controls">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
     </button>
-    <button class="control" id="camera" type="button" disabled data-on="true">
-      <span class="ico">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6.5" width="13" height="11" rx="2.5"/><path d="M16 10.5l5-3v9l-5-3"/><path class="slash" d="M4 4l16 16"/></svg>
-      </span>
-      <span class="lbl">Camera on</span>
-    </button>
-    <button class="control" id="start" type="button" data-state="ready">
-      <span class="ico">
-        <svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>
-        <svg class="i-pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5.5v13M15 5.5v13"/></svg>
-        <svg class="i-restart" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12a7.5 7.5 0 1 0 2.4-5.5M4.5 4.5v4h4"/></svg>
-      </span>
-      <span class="lbl">Start</span>
-    </button>
-    <button class="control leave" id="leave" type="button" disabled>
-      <span class="ico">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4.5h4.5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H14M10 8l-4 4 4 4M6 12h9"/></svg>
-      </span>
-      <span class="lbl">Leave</span>
-    </button>
+    <div class="rail-buttons" id="railButtons">
+      <button class="control" id="mic" type="button" disabled data-on="true">
+        <span class="ico">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/><path class="slash" d="M4 4l16 16"/></svg>
+        </span>
+        <span class="lbl">Mic on</span>
+      </button>
+      <button class="control" id="camera" type="button" disabled data-on="true">
+        <span class="ico">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6.5" width="13" height="11" rx="2.5"/><path d="M16 10.5l5-3v9l-5-3"/><path class="slash" d="M4 4l16 16"/></svg>
+        </span>
+        <span class="lbl">Camera on</span>
+      </button>
+      <button class="control" id="start" type="button" data-state="ready">
+        <span class="ico">
+          <svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>
+          <svg class="i-pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5.5v13M15 5.5v13"/></svg>
+          <svg class="i-restart" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12a7.5 7.5 0 1 0 2.4-5.5M4.5 4.5v4h4"/></svg>
+        </span>
+        <span class="lbl">Start</span>
+      </button>
+      <button class="control leave" id="leave" type="button" disabled>
+        <span class="ico">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4.5h4.5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H14M10 8l-4 4 4 4M6 12h9"/></svg>
+        </span>
+        <span class="lbl">Leave</span>
+      </button>
+    </div>
   </nav>
 </main>
 

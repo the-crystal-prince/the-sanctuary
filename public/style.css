@@ -1,14 +1,15 @@
 :root {
-  --night: #0d100c;
-  --mist: #efe9dc;
-  --dim: #a39d8c;
-  --faint: #716c5f;
-  --glass: rgba(36, 32, 24, 0.55);
-  --glass-strong: rgba(36, 32, 24, 0.82);
-  --rim: rgba(255, 246, 228, 0.14);
-  --lantern: #ffd9a0;
+  --night: #04060c;
+  --mist: #eef1f8;
+  --dim: #9aa3b8;
+  --faint: #636c82;
+  --glass: rgba(18, 24, 38, 0.5);
+  --glass-strong: rgba(14, 19, 31, 0.86);
+  --rim: rgba(220, 232, 255, 0.16);
+  --moon: #dbe6ff;
   --line-green: #06c755;
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --rail-pad: 72px; /* room kept free for the side rail */
   color-scheme: dark;
 }
 
@@ -29,18 +30,59 @@ body {
   color: var(--mist);
   background: transparent;
   -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
 }
 
-/* Warm light pooling in from the upper right, over deep moss. */
-body::before {
-  content: "";
+/* ---------- The sky: a vast, quiet night ---------- */
+
+.sky {
   position: fixed;
   inset: 0;
   z-index: -2;
+  overflow: hidden;
   background:
-    radial-gradient(110% 60% at 88% 2%, rgba(166, 130, 84, 0.38), transparent 62%),
-    radial-gradient(80% 55% at 2% 48%, rgba(90, 77, 54, 0.4), transparent 70%),
-    linear-gradient(180deg, #17140e 0%, var(--night) 72%);
+    /* moonlight pooling around where the sphere hangs */
+    radial-gradient(60% 38% at 50% 30%, rgba(150, 175, 230, 0.2), transparent 70%),
+    /* a faint haze low on the horizon, far away */
+    radial-gradient(130% 28% at 50% 104%, rgba(70, 90, 140, 0.3), transparent 70%),
+    linear-gradient(180deg, #070a14 0%, #04060c 55%, #02030a 100%);
+}
+
+/* Three star layers at different tile sizes, so the pattern never looks tiled. */
+.sky::before,
+.sky::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+.sky::before {
+  background-image:
+    radial-gradient(1px 1px at 22px 38px, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(1px 1px at 96px 150px, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(1.2px 1.2px at 170px 74px, rgba(220, 232, 255, 0.85), transparent),
+    radial-gradient(1px 1px at 58px 210px, rgba(255, 255, 255, 0.6), transparent),
+    radial-gradient(1px 1px at 210px 190px, rgba(255, 255, 255, 0.75), transparent);
+  background-size: 240px 240px;
+}
+
+.sky::after {
+  background-image:
+    radial-gradient(1px 1px at 40px 60px, rgba(255, 255, 255, 0.55), transparent),
+    radial-gradient(1.4px 1.4px at 200px 250px, rgba(210, 225, 255, 0.9), transparent),
+    radial-gradient(1px 1px at 310px 120px, rgba(255, 255, 255, 0.6), transparent),
+    radial-gradient(1px 1px at 130px 330px, rgba(255, 255, 255, 0.5), transparent);
+  background-size: 360px 360px;
+  animation: twinkle 7s ease-in-out infinite alternate;
+}
+
+@keyframes twinkle {
+  from {
+    opacity: 0.35;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 /* Fine grain keeps the dark gradients from banding. */
@@ -50,7 +92,7 @@ body::after {
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  opacity: 0.07;
+  opacity: 0.06;
   mix-blend-mode: overlay;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
 }
@@ -71,22 +113,28 @@ button:disabled {
 }
 
 :focus-visible {
-  outline: 2px solid var(--lantern);
+  outline: 2px solid var(--moon);
   outline-offset: 3px;
 }
 
 /* ---------- Layout ---------- */
 
 .stage {
-  max-width: 520px;
+  max-width: 560px;
   margin: 0 auto;
   min-height: 100vh;
   min-height: 100dvh;
-  padding: 0 24px calc(18px + env(safe-area-inset-bottom));
+  padding: 0 var(--rail-pad) calc(18px + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
+}
+
+/* With the rail minimised the room opens right out. */
+body.rail-min .stage {
+  padding-left: 24px;
+  padding-right: 24px;
 }
 
 .top {
@@ -95,7 +143,7 @@ button:disabled {
   justify-content: space-between;
   align-items: baseline;
   gap: 12px;
-  padding-top: calc(22px + env(safe-area-inset-top));
+  padding-top: calc(18px + env(safe-area-inset-top));
 }
 
 .wordmark {
@@ -109,31 +157,43 @@ button:disabled {
   color: var(--dim);
 }
 
-/* ---------- Hero: the orb ---------- */
+/* Everything marked .ui fades away when you tap empty space. */
+.ui {
+  transition: opacity 0.5s var(--ease), transform 0.5s var(--ease);
+}
+
+body.ui-hidden .ui {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ---------- Hero: the moon ---------- */
 
 .hero {
+  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin-top: clamp(20px, 6vh, 56px);
+  justify-content: center;
+  width: 100%;
+  padding: clamp(24px, 6vh, 64px) 0;
 }
 
 .orb-wrap {
   position: relative;
-  width: min(76vw, 340px, 34vh);
-  width: min(76vw, 340px, 34dvh);
+  width: min(46vw, 190px, 24vh);
+  width: min(46vw, 190px, 24dvh);
   aspect-ratio: 1;
   transition: width 0.9s var(--ease);
-  animation: orb-in 1.4s var(--ease) both;
+  animation: orb-in 1.6s var(--ease) both;
 }
 
-/* Light the orb gives off, as if it were lit from within. */
+/* Moonlight the sphere gives off into the dark around it. */
 .orb-wrap::before {
   content: "";
   position: absolute;
-  inset: -4%;
-  background: radial-gradient(closest-side, rgba(255, 196, 128, 0.17), transparent 74%);
-  filter: blur(8px);
+  inset: -34%;
+  background: radial-gradient(closest-side, rgba(170, 195, 255, 0.2), rgba(150, 175, 240, 0.06) 55%, transparent 76%);
   pointer-events: none;
 }
 
@@ -148,8 +208,8 @@ button:disabled {
   position: absolute;
   inset: 10%;
   border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, #38332b, #090908 70%);
-  box-shadow: inset 0 0 0 1px var(--rim);
+  background: radial-gradient(circle at 35% 30%, #ffffff, #b9c3d6 75%);
+  box-shadow: 0 0 40px rgba(180, 200, 255, 0.35);
 }
 
 @keyframes orb-in {
@@ -160,19 +220,19 @@ button:disabled {
 }
 
 h1 {
-  margin: clamp(0px, 1vh, 8px) 0 0;
-  font-size: clamp(30px, 8vw, 38px);
+  margin: clamp(10px, 2vh, 20px) 0 0;
+  font-size: clamp(26px, 7vw, 32px);
   font-weight: 800;
   letter-spacing: -0.03em;
   line-height: 1.1;
 }
 
 .timer {
-  margin-top: 18px;
+  margin-top: clamp(14px, 3vh, 26px);
 }
 
 #clock {
-  font-size: clamp(56px, 17vw, 76px);
+  font-size: clamp(52px, 15vw, 72px);
   font-weight: 200;
   letter-spacing: -0.02em;
   line-height: 1;
@@ -189,7 +249,7 @@ h1 {
 
 .join {
   width: 100%;
-  margin-top: clamp(24px, 4vh, 36px);
+  margin-top: 8px;
 }
 
 .join-row {
@@ -223,7 +283,7 @@ h1 {
 }
 
 .join-row:focus-within {
-  border-color: rgba(255, 217, 160, 0.55);
+  border-color: rgba(200, 218, 255, 0.55);
 }
 
 .join-row input:disabled {
@@ -235,7 +295,7 @@ h1 {
   border-radius: 999px;
   padding: 12px 24px;
   background: var(--mist);
-  color: #1a1710;
+  color: #0a0e18;
   font-weight: 600;
   font-size: 15px;
   transition: opacity 0.2s;
@@ -249,6 +309,7 @@ h1 {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-wrap: wrap;
   gap: 12px;
   margin-bottom: 14px;
   font-size: 13px;
@@ -270,19 +331,25 @@ h1 {
   font-weight: 600;
 }
 
-/* ---------- People ---------- */
+/* ---------- People: sit between the moon and the timer ---------- */
 
 .people {
   display: none;
   width: 100%;
-  margin-top: 36px;
+  margin-top: clamp(16px, 3vh, 28px);
   flex-wrap: wrap;
   justify-content: center;
-  gap: 26px 14px;
+  gap: 20px 14px;
+  transition: opacity 0.5s var(--ease);
 }
 
 .in-room .people {
   display: flex;
+}
+
+/* In the quiet view the people stay, but softly. */
+body.ui-hidden .people {
+  opacity: 0.55;
 }
 
 .person {
@@ -294,18 +361,18 @@ h1 {
   position: relative;
   width: 60px;
   height: 60px;
-  margin: 0 auto 10px;
+  margin: 0 auto 8px;
   border-radius: 50%;
   overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
   background:
-    radial-gradient(circle at 35% 25%, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.03) 55%, rgba(0, 0, 0, 0.3)),
-    #1b1913;
+    radial-gradient(circle at 35% 25%, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.03) 55%, rgba(0, 0, 0, 0.3)),
+    #10151f;
   box-shadow:
     inset 0 0 0 1px var(--rim),
-    0 0 0 0 rgba(255, 200, 130, 0);
+    0 0 0 0 rgba(190, 210, 255, 0);
   transition: box-shadow 0.4s var(--ease);
 }
 
@@ -325,7 +392,7 @@ h1 {
   height: 100%;
   object-fit: cover;
   border-radius: 50%;
-  background: #14130e;
+  background: #0b0f17;
 }
 
 #localVideo {
@@ -348,13 +415,13 @@ h1 {
 @keyframes speaking {
   from {
     box-shadow:
-      inset 0 0 0 1px rgba(255, 217, 160, 0.7),
-      0 0 14px 2px rgba(255, 196, 128, 0.3);
+      inset 0 0 0 1px rgba(205, 222, 255, 0.7),
+      0 0 14px 2px rgba(170, 195, 255, 0.3);
   }
   to {
     box-shadow:
-      inset 0 0 0 1px rgba(255, 217, 160, 0.95),
-      0 0 30px 8px rgba(255, 196, 128, 0.5);
+      inset 0 0 0 1px rgba(225, 236, 255, 0.95),
+      0 0 30px 8px rgba(170, 195, 255, 0.5);
   }
 }
 
@@ -379,34 +446,37 @@ h1 {
 .note {
   max-width: 30ch;
   min-height: 2.8em;
-  margin: 28px 0 0;
+  margin: 12px 0 0;
   font-size: 13px;
   line-height: 1.55;
   color: var(--dim);
 }
 
 .foot {
-  margin: 18px 0 28px;
+  margin: 14px 0 12px;
   font-size: 12px;
   color: var(--faint);
 }
 
-/* ---------- Controls: a floating glass bar ---------- */
+/* ---------- Controls: a glass rail down the right edge ---------- */
 
 .controls {
-  position: sticky;
-  bottom: calc(18px + env(safe-area-inset-bottom));
-  margin-top: auto;
-  z-index: 2;
+  position: fixed;
+  top: 50%;
+  right: calc(10px + env(safe-area-inset-right));
+  transform: translateY(-50%);
+  z-index: 3;
   display: flex;
-  gap: 4px;
-  padding: 8px;
-  border-radius: 999px;
-  background: rgba(30, 27, 20, 0.74);
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px;
+  border-radius: 34px;
+  background: rgba(14, 19, 31, 0.6);
   border: 1px solid var(--rim);
   -webkit-backdrop-filter: blur(20px) saturate(1.2);
   backdrop-filter: blur(20px) saturate(1.2);
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
 }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
@@ -416,23 +486,72 @@ h1 {
   }
 }
 
-.control {
-  width: 68px;
-  padding: 10px 0 9px;
+.rail-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rail-toggle {
+  width: 36px;
+  height: 30px;
   border: 0;
   border-radius: 999px;
+  background: transparent;
+  color: var(--dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.25s, color 0.25s;
+}
+
+.rail-toggle:active {
+  background: rgba(220, 232, 255, 0.1);
+  color: var(--mist);
+}
+
+.rail-toggle svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 0.4s var(--ease);
+}
+
+/* Minimised: only the small handle is left, pointing back out. */
+.controls.min {
+  padding: 4px;
+  border-radius: 999px;
+}
+
+.controls.min .rail-buttons {
+  display: none;
+}
+
+.controls.min .rail-toggle svg {
+  transform: rotate(180deg);
+}
+
+.control {
+  width: 58px;
+  padding: 10px 0 8px;
+  border: 0;
+  border-radius: 24px;
   background: transparent;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   font-size: 11px;
   color: var(--mist);
   transition: background 0.25s, opacity 0.25s;
 }
 
 .control:not(:disabled):active {
-  background: rgba(255, 246, 228, 0.1);
+  background: rgba(220, 232, 255, 0.1);
 }
 
 .control:disabled {
@@ -486,30 +605,25 @@ h1 {
   color: #f2a592;
 }
 
-/* ---------- After joining: the orb makes room for people ---------- */
+/* ---------- After joining: the moon shrinks to make room for people ---------- */
 
 .in-room .orb-wrap {
-  width: min(54vw, 200px, 26vh);
-  width: min(54vw, 200px, 26dvh);
+  width: min(30vw, 116px, 15vh);
+  width: min(30vw, 116px, 15dvh);
 }
 
 .in-room .join {
   display: none;
 }
 
-.in-room .note {
-  margin-top: 24px;
-}
-
 /* ---------- Small and reduced-motion ---------- */
 
 @media (max-width: 360px) {
-  .stage {
-    padding-left: 16px;
-    padding-right: 16px;
+  :root {
+    --rail-pad: 66px;
   }
   .control {
-    width: 58px;
+    width: 52px;
   }
 }
 
@@ -522,7 +636,7 @@ h1 {
   }
 }
 
-/* ---------- Edge light: the menu catches the same light as the orb ---------- */
+/* ---------- Edge light: the rail catches the same moonlight as the sphere ---------- */
 
 @property --rim-angle {
   syntax: "<angle>";
@@ -530,13 +644,8 @@ h1 {
   initial-value: 0deg;
 }
 
-.controls,
 .join-row {
   position: relative;
-}
-
-.controls {
-  position: sticky;
 }
 
 /* A thin ring of light that travels slowly around the edge. */
@@ -550,9 +659,9 @@ h1 {
   background: conic-gradient(
     from var(--rim-angle),
     transparent 0 50%,
-    rgba(255, 170, 90, 0.85) 64%,
-    rgba(255, 250, 240, 1) 74%,
-    rgba(120, 170, 255, 0.85) 84%,
+    rgba(140, 180, 255, 0.8) 64%,
+    rgba(255, 255, 255, 1) 74%,
+    rgba(190, 170, 255, 0.75) 84%,
     transparent 95%
   );
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
@@ -572,7 +681,7 @@ h1 {
   inset: -3px;
   padding: 4px;
   filter: blur(9px);
-  opacity: 0.75;
+  opacity: 0.6;
 }
 
 .join-row::before {
@@ -590,16 +699,16 @@ h1 {
 
 /* A button that is switched on glows from within. */
 #start[data-state="running"] {
-  background: rgba(255, 217, 160, 0.14);
+  background: rgba(200, 218, 255, 0.14);
   box-shadow:
-    inset 0 0 0 1px rgba(255, 217, 160, 0.4),
-    0 0 20px rgba(255, 190, 120, 0.4);
+    inset 0 0 0 1px rgba(210, 225, 255, 0.4),
+    0 0 20px rgba(160, 190, 255, 0.4);
 }
 
 .control:not(:disabled):hover {
-  box-shadow: 0 0 18px rgba(255, 200, 140, 0.25);
+  box-shadow: 0 0 18px rgba(180, 205, 255, 0.25);
 }
 
 .join-row:focus-within {
-  box-shadow: 0 0 0 1px rgba(255, 217, 160, 0.5), 0 0 30px rgba(255, 190, 120, 0.28);
+  box-shadow: 0 0 0 1px rgba(200, 218, 255, 0.5), 0 0 30px rgba(160, 190, 255, 0.28);
 }

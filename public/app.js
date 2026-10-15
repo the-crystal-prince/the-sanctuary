@@ -51,6 +51,8 @@ function setControls(connected) {
   joinButton.textContent = connecting ? "Joining…" : "Join";
   nameInput.disabled = connected || connecting || nameLocked;
   document.body.classList.toggle("in-room", connected);
+  // Leaving the room always brings the interface back.
+  if (!connected) document.body.classList.remove("ui-hidden");
 }
 
 // First letter of a name, for the circle shown when the camera is off.
@@ -529,8 +531,38 @@ async function initLine() {
   }
 }
 
+/* ---------- Side rail and quiet view ---------- */
+
+const controls = $("controls");
+const railToggle = $("railToggle");
+
+// The rail can fold down to a small handle so the room opens right out.
+function setRailMinimized(minimized) {
+  controls.classList.toggle("min", minimized);
+  document.body.classList.toggle("rail-min", minimized);
+  railToggle.setAttribute("aria-expanded", String(!minimized));
+  railToggle.setAttribute(
+    "aria-label",
+    minimized ? "Show controls" : "Minimize controls",
+  );
+}
+
+// Tap empty space while in the room to hide or show the whole interface.
+function setUiHidden(hidden) {
+  document.body.classList.toggle("ui-hidden", hidden);
+}
+
+document.addEventListener("click", (event) => {
+  if (!document.body.classList.contains("in-room")) return;
+  if (event.target.closest("button, input, a, nav, .person")) return;
+  setUiHidden(!document.body.classList.contains("ui-hidden"));
+});
+
 /* ---------- Wiring ---------- */
 
+railToggle.addEventListener("click", () =>
+  setRailMinimized(!controls.classList.contains("min")),
+);
 joinButton.addEventListener("click", joinRoom);
 micButton.addEventListener("click", toggleMic);
 cameraButton.addEventListener("click", toggleCamera);

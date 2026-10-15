@@ -98,10 +98,10 @@ function start() {
     // orb body then covers the part that falls inside the sphere.
     ctx.globalCompositeOperation = "lighter";
     const halo = ctx.createRadialGradient(cx, cy, R * 0.9, cx, cy, R * 1.18);
-    halo.addColorStop(0, `rgba(255,190,120,${0.34 * glow})`);
-    halo.addColorStop(0.37, `rgba(255,180,110,${0.28 * glow})`);
-    halo.addColorStop(0.62, `rgba(255,160,90,${0.1 * glow})`);
-    halo.addColorStop(1, "rgba(255,160,90,0)");
+    halo.addColorStop(0, `rgba(225,235,255,${0.4 * glow})`);
+    halo.addColorStop(0.37, `rgba(190,208,255,${0.26 * glow})`);
+    halo.addColorStop(0.62, `rgba(160,185,250,${0.1 * glow})`);
+    halo.addColorStop(1, "rgba(160,185,250,0)");
     ctx.fillStyle = halo;
     ctx.fillRect(0, 0, SIZE, SIZE);
     const cool = ctx.createRadialGradient(
@@ -112,9 +112,9 @@ function start() {
       cy - R * 0.1,
       R * 1.16,
     );
-    cool.addColorStop(0, `rgba(120,170,255,${0.16 * glow})`);
-    cool.addColorStop(0.4, `rgba(120,170,255,${0.1 * glow})`);
-    cool.addColorStop(1, "rgba(120,170,255,0)");
+    cool.addColorStop(0, `rgba(190,170,255,${0.14 * glow})`);
+    cool.addColorStop(0.4, `rgba(190,170,255,${0.08 * glow})`);
+    cool.addColorStop(1, "rgba(190,170,255,0)");
     ctx.fillStyle = cool;
     ctx.fillRect(0, 0, SIZE, SIZE);
     ctx.globalCompositeOperation = "source-over";
@@ -124,7 +124,7 @@ function start() {
     ctx.arc(cx, cy, R, 0, TAU);
     ctx.clip();
 
-    // Dark glass body, lit from the upper left.
+    // Full-moon body: pale and luminous, shaded softly toward the limb.
     const body = ctx.createRadialGradient(
       cx - R * 0.3,
       cy - R * 0.4,
@@ -133,11 +133,18 @@ function start() {
       cy,
       R,
     );
-    body.addColorStop(0, "#38332b");
-    body.addColorStop(0.55, "#1b1a15");
-    body.addColorStop(1, "#090908");
+    body.addColorStop(0, "#ffffff");
+    body.addColorStop(0.5, "#e6eaf3");
+    body.addColorStop(0.85, "#b4bdd0");
+    body.addColorStop(1, "#8793ad");
     ctx.fillStyle = body;
     ctx.fillRect(0, 0, SIZE, SIZE);
+
+    // Faint seas on the surface, like the dim patches on a full moon.
+    smudge(cx - R * 0.28, cy - R * 0.3, R * 0.42, "110,122,150", 0.16);
+    smudge(cx + R * 0.3, cy - R * 0.45, R * 0.3, "110,122,150", 0.13);
+    smudge(cx + R * 0.38, cy + R * 0.05, R * 0.36, "110,122,150", 0.12);
+    smudge(cx - R * 0.5, cy + R * 0.2, R * 0.26, "110,122,150", 0.1);
 
     // Liquid: everything below the waterline.
     const base = cy + level * R;
@@ -153,35 +160,51 @@ function start() {
     ctx.closePath();
 
     const liquid = ctx.createLinearGradient(0, base - R * 0.1, 0, cy + R);
-    liquid.addColorStop(0, "rgba(255,244,230,0.20)");
-    liquid.addColorStop(0.18, "rgba(255,236,214,0.08)");
-    liquid.addColorStop(0.7, "rgba(255,230,200,0.05)");
-    liquid.addColorStop(1, "rgba(255,196,140,0.16)");
+    liquid.addColorStop(0, "rgba(255,255,255,0.62)");
+    liquid.addColorStop(0.18, "rgba(244,248,255,0.4)");
+    liquid.addColorStop(0.7, "rgba(226,236,255,0.3)");
+    liquid.addColorStop(1, "rgba(160,184,236,0.4)");
     ctx.fillStyle = liquid;
     ctx.fill();
 
     // Soft colour caught inside the liquid.
     ctx.save();
     ctx.clip();
-    ctx.globalCompositeOperation = "lighter";
-    smudge(cx - R * 0.32, cy + R * 0.62, R * 0.55, "255,160,80", 0.16);
-    smudge(cx + R * 0.34, cy + R * 0.5, R * 0.5, "90,170,210", 0.09);
-    smudge(cx, cy + R * 0.95, R * 0.7, "255,210,160", 0.12);
+    smudge(cx - R * 0.32, cy + R * 0.62, R * 0.55, "150,170,255", 0.2);
+    smudge(cx + R * 0.34, cy + R * 0.5, R * 0.5, "120,200,230", 0.14);
+    smudge(cx, cy + R * 0.95, R * 0.7, "190,170,255", 0.16);
     ctx.restore();
 
-    // The bright, prism-edged waterline.
+    // A fine shadow under the waterline keeps it readable on the pale moon.
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, 0, TAU);
+    ctx.clip();
+    ctx.beginPath();
+    for (let u = -1; u <= 1.001; u += 0.02) {
+      const x = cx + u * R;
+      const y = base + surfaceY(u) + 3;
+      if (u === -1) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = "rgba(80,96,140,0.3)";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.restore();
+
+    // The bright, prism-edged waterline (cool fringe, white core).
     ctx.globalCompositeOperation = "lighter";
-    edge(base, 5, "110,160,255", 6, 22, 0.55);
-    edge(base, -5, "255,165,80", 6, 22, 0.6);
-    edge(base, 0, "255,250,240", 4, 16, 0.95);
+    edge(base, 5, "120,165,255", 6, 22, 0.55);
+    edge(base, -5, "195,170,255", 6, 22, 0.5);
+    edge(base, 0, "255,255,255", 4, 16, 0.95);
     ctx.globalCompositeOperation = "source-over";
 
     // Glass edge: brighter toward the rim.
     const rim = ctx.createRadialGradient(cx, cy, R * 0.72, cx, cy, R);
-    rim.addColorStop(0, "rgba(255,244,226,0)");
-    rim.addColorStop(0.78, "rgba(255,244,226,0.05)");
-    rim.addColorStop(0.95, "rgba(255,240,220,0.18)");
-    rim.addColorStop(1, "rgba(255,248,236,0.34)");
+    rim.addColorStop(0, "rgba(200,215,255,0)");
+    rim.addColorStop(0.78, "rgba(200,215,255,0.05)");
+    rim.addColorStop(0.95, "rgba(215,228,255,0.2)");
+    rim.addColorStop(1, "rgba(235,242,255,0.4)");
     ctx.fillStyle = rim;
     ctx.fillRect(0, 0, SIZE, SIZE);
 
@@ -198,17 +221,17 @@ function start() {
       for (const light of lights) {
         const a = light.strength * glow;
         const g = ctx.createConicGradient(light.angle, cx, cy);
-        g.addColorStop(0, "rgba(255,150,80,0)");
-        g.addColorStop(0.5, "rgba(255,150,80,0)");
-        g.addColorStop(0.64, `rgba(255,170,90,${0.5 * a})`);
-        g.addColorStop(0.74, `rgba(255,250,240,${0.95 * a})`);
+        g.addColorStop(0, "rgba(190,170,255,0)");
+        g.addColorStop(0.5, "rgba(190,170,255,0)");
+        g.addColorStop(0.64, `rgba(190,170,255,${0.5 * a})`);
+        g.addColorStop(0.74, `rgba(255,255,255,${0.95 * a})`);
         g.addColorStop(0.84, `rgba(120,170,255,${0.55 * a})`);
         g.addColorStop(0.95, "rgba(120,170,255,0)");
         g.addColorStop(1, "rgba(120,170,255,0)");
         ctx.beginPath();
         ctx.arc(cx, cy, R - 4, 0, TAU);
         ctx.strokeStyle = g;
-        ctx.shadowColor = `rgba(255,190,130,${0.7 * a})`;
+        ctx.shadowColor = `rgba(190,210,255,${0.7 * a})`;
         ctx.shadowBlur = 26;
         ctx.stroke();
       }
@@ -225,8 +248,8 @@ function start() {
     ctx.beginPath();
     ctx.arc(cx, cy, R * 0.93, Math.PI * 1.05, Math.PI * 1.42);
     ctx.stroke();
-    ctx.shadowColor = "rgba(255,170,90,0.5)";
-    ctx.strokeStyle = "rgba(255,180,110,0.12)";
+    ctx.shadowColor = "rgba(160,185,250,0.5)";
+    ctx.strokeStyle = "rgba(170,195,255,0.14)";
     ctx.beginPath();
     ctx.arc(cx, cy, R * 0.94, Math.PI * 0.2, Math.PI * 0.62);
     ctx.stroke();
@@ -236,9 +259,9 @@ function start() {
 
     // Outer rim, with a faint colour split like real glass.
     ctx.globalCompositeOperation = "lighter";
-    ring(-2, "110,160,255", 0.2);
-    ring(2, "255,170,90", 0.2);
-    ring(0, "255,246,230", 0.2);
+    ring(-2, "120,165,255", 0.22);
+    ring(2, "195,170,255", 0.2);
+    ring(0, "245,248,255", 0.3);
     ctx.globalCompositeOperation = "source-over";
   }
 
