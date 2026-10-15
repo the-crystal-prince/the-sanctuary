@@ -7,7 +7,7 @@
 <title>The Sanctuary</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@200;400;600;800&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:ital,wght@0,200;0,400;0,600;0,800;1,300;1,400&display=swap">
 <link rel="stylesheet" href="style.css">
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 </head>
@@ -20,12 +20,11 @@
     <span class="count" id="count">Up to 8 people</span>
   </header>
 
-  <section class="hero" aria-label="Forest Room">
+  <section class="hero" aria-label="Meditation room">
     <div class="orb-wrap">
       <canvas id="orb" width="640" height="640" aria-hidden="true"></canvas>
       <div class="orb-fallback" id="orbFallback" hidden></div>
     </div>
-    <h1 class="ui">Forest Room</h1>
 
     <div class="people" id="people">
       <div class="person" id="localPerson">
@@ -34,14 +33,17 @@
           <span class="camera-placeholder" id="cameraPlaceholder">Y</span>
         </div>
         <div class="name" id="localName">You</div>
-        <div class="status" id="localStatus">Not connected</div>
+        <div class="status" id="localStatus"></div>
       </div>
     </div>
 
     <div class="timer">
-      <div id="clock" role="timer">20:00</div>
-      <div id="timerState" class="ui">Ready when you are</div>
+      <div id="clock" role="timer">00:00</div>
+      <div id="timerState" class="ui">Join the room to begin together</div>
+      <button class="session-btn ui" id="session" type="button" disabled data-state="ready">Begin together</button>
     </div>
+
+    <ol class="timeline ui" id="timeline" aria-label="Session timeline" hidden></ol>
   </section>
 
   <section class="join ui" aria-label="Join the room">
@@ -56,43 +58,85 @@
   </section>
 
   <p class="note ui" id="message" role="status">Your browser will ask to use the camera and microphone when you join.</p>
-  <p class="foot ui">Each timer runs on your own device. Once you're in, tap empty space to hide the controls.</p>
-
-  <nav class="controls ui" id="controls" aria-label="Room controls">
-    <button class="rail-toggle" id="railToggle" type="button" aria-expanded="true" aria-controls="railButtons" aria-label="Minimize controls">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
-    </button>
-    <div class="rail-buttons" id="railButtons">
-      <button class="control" id="mic" type="button" disabled data-on="true">
-        <span class="ico">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/><path class="slash" d="M4 4l16 16"/></svg>
-        </span>
-        <span class="lbl">Mic on</span>
-      </button>
-      <button class="control" id="camera" type="button" disabled data-on="true">
-        <span class="ico">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6.5" width="13" height="11" rx="2.5"/><path d="M16 10.5l5-3v9l-5-3"/><path class="slash" d="M4 4l16 16"/></svg>
-        </span>
-        <span class="lbl">Camera on</span>
-      </button>
-      <button class="control" id="start" type="button" data-state="ready">
-        <span class="ico">
-          <svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>
-          <svg class="i-pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5.5v13M15 5.5v13"/></svg>
-          <svg class="i-restart" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12a7.5 7.5 0 1 0 2.4-5.5M4.5 4.5v4h4"/></svg>
-        </span>
-        <span class="lbl">Start</span>
-      </button>
-      <button class="control leave" id="leave" type="button" disabled>
-        <span class="ico">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4.5h4.5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H14M10 8l-4 4 4 4M6 12h9"/></svg>
-        </span>
-        <span class="lbl">Leave</span>
-      </button>
-    </div>
-  </nav>
+  <p class="foot ui">Once you're in, tap empty space to hide the controls.</p>
 </main>
 
+<!-- Action keys: a bubble in the lower left that opens sideways into three more. -->
+<nav class="actions ui" id="actions" aria-label="Share with the room">
+  <button class="bubble actions-toggle" id="actionsToggle" type="button" aria-expanded="false" aria-controls="actionKeys" aria-label="Open action keys">
+    <svg class="i-lotus" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19c-3.2-1.2-5-3.6-5-7 0-2.4 1.1-4.6 5-7.5 3.9 2.9 5 5.1 5 7.5 0 3.4-1.8 5.8-5 7z"/><path d="M7.2 12.2C4.6 12.6 3 14 2.7 16.4c2.6.9 5.2.3 7-1.4M16.8 12.2c2.6.4 4.2 1.8 4.5 4.2-2.6.9-5.2.3-7-1.4"/></svg>
+    <svg class="i-close" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg>
+  </button>
+  <div class="action-keys" id="actionKeys">
+    <button class="bubble action-key key-metta" id="actMetta" type="button" style="--j:1" aria-label="Share Metta">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5C5.5 15.6 3.2 12.3 3.2 9a4.6 4.6 0 0 1 8.8-1.9A4.6 4.6 0 0 1 20.8 9c0 3.3-2.3 6.6-8.8 11.5z"/></svg>
+      <span class="key-lbl">Metta</span>
+    </button>
+    <button class="bubble action-key key-boon" id="actBoon" type="button" style="--j:2" aria-label="Share Boon">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v4.5M12 16.5V21M3 12h4.5M16.5 12H21M5.8 5.8l3 3M15.2 15.2l3 3M18.2 5.8l-3 3M8.8 15.2l-3 3"/><circle cx="12" cy="12" r="2.2"/></svg>
+      <span class="key-lbl">Boon</span>
+    </button>
+    <button class="bubble action-key key-rejoice" id="actRejoice" type="button" style="--j:3" aria-label="Rejoice in Boon">
+      <span class="emoji" aria-hidden="true">🙏</span>
+      <span class="key-lbl">Rejoice</span>
+    </button>
+  </div>
+</nav>
+
+<!-- Room controls: round bubbles in the lower right that stack into one handle. -->
+<nav class="controls ui" id="controls" aria-label="Room controls">
+  <div class="rail-buttons" id="railButtons">
+    <button class="bubble control" id="mic" type="button" disabled data-on="true" style="--k:4" aria-label="Mic on">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/><path class="slash" d="M4 4l16 16"/></svg>
+    </button>
+    <button class="bubble control" id="camera" type="button" disabled data-on="true" style="--k:3" aria-label="Camera on">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6.5" width="13" height="11" rx="2.5"/><path d="M16 10.5l5-3v9l-5-3"/><path class="slash" d="M4 4l16 16"/></svg>
+    </button>
+    <button class="bubble control" id="chatToggle" type="button" disabled style="--k:2" aria-label="Messages">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5h16a1 1 0 0 1 1 1v9.5a1 1 0 0 1-1 1H10l-4.5 3.5V17H4a1 1 0 0 1-1-1V6.5a1 1 0 0 1 1-1z"/></svg>
+      <span class="dot" id="chatDot" hidden></span>
+    </button>
+    <button class="bubble control leave" id="leave" type="button" disabled style="--k:1" aria-label="Leave room">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4.5h4.5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H14M10 8l-4 4 4 4M6 12h9"/></svg>
+    </button>
+  </div>
+  <button class="bubble rail-toggle" id="railToggle" type="button" aria-expanded="true" aria-controls="railButtons" aria-label="Minimize controls">
+    <svg class="i-down" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9.5l6 6 6-6"/></svg>
+    <svg class="i-bubbles" viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="15.5" r="3.6"/><circle cx="16.2" cy="12" r="2.6"/><circle cx="12.4" cy="6.6" r="1.8"/></svg>
+  </button>
+</nav>
+
+<!-- Messages -->
+<section class="sheet" id="chatSheet" aria-label="Messages" hidden>
+  <header class="sheet-head">
+    <span>Messages</span>
+    <button class="sheet-close" id="chatClose" type="button" aria-label="Close messages">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg>
+    </button>
+  </header>
+  <ol class="chat-list" id="chatList"></ol>
+  <form class="chat-form" id="chatForm" autocomplete="off">
+    <input id="chatInput" type="text" maxlength="500" placeholder="Send a kind word…" aria-label="Message">
+    <button class="send-btn" type="submit" aria-label="Send">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12l16-7-6 15-2.5-6.2z"/></svg>
+    </button>
+  </form>
+</section>
+
+<!-- Floating blessings, message toasts and the end-of-session summary -->
+<div class="fx" id="fx" aria-hidden="true"></div>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<section class="summary" id="summary" role="dialog" aria-modal="true" aria-labelledby="sumTitle" hidden>
+  <div class="summary-card">
+    <div class="sum-emoji" aria-hidden="true">🙏✨</div>
+    <h2 id="sumTitle">We meditated 30 minutes!</h2>
+    <p class="sum-sadhu">Sadhuuu</p>
+    <p class="sum-boon">The Boon is Yours!</p>
+    <ol class="timeline full" id="sumTimeline"></ol>
+    <button class="join-button sum-close" id="sumClose" type="button">Close</button>
+  </div>
+</section>
 
 <script type="module" src="orb.js"></script>
 <script type="module" src="app.js"></script>

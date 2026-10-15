@@ -4,12 +4,16 @@
   --dim: #9aa3b8;
   --faint: #636c82;
   --glass: rgba(18, 24, 38, 0.5);
-  --glass-strong: rgba(14, 19, 31, 0.86);
+  --glass-strong: rgba(14, 19, 31, 0.88);
   --rim: rgba(220, 232, 255, 0.16);
   --moon: #dbe6ff;
+  --pink: #ff9ec8;
+  --on: #4ade80;
+  --off: #f87171;
   --line-green: #06c755;
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
-  --rail-pad: 72px; /* room kept free for the side rail */
+  --bubble: 50px;
+  --rail-pad: 68px; /* room kept free for the bubbles on the right */
   color-scheme: dark;
 }
 
@@ -41,14 +45,12 @@ body {
   z-index: -2;
   overflow: hidden;
   background:
-    /* moonlight pooling around where the sphere hangs */
     radial-gradient(60% 38% at 50% 30%, rgba(150, 175, 230, 0.2), transparent 70%),
-    /* a faint haze low on the horizon, far away */
     radial-gradient(130% 28% at 50% 104%, rgba(70, 90, 140, 0.3), transparent 70%),
     linear-gradient(180deg, #070a14 0%, #04060c 55%, #02030a 100%);
 }
 
-/* Three star layers at different tile sizes, so the pattern never looks tiled. */
+/* Two star layers at different tile sizes, so the pattern never looks tiled. */
 .sky::before,
 .sky::after {
   content: "";
@@ -117,6 +119,10 @@ button:disabled {
   outline-offset: 3px;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 /* ---------- Layout ---------- */
 
 .stage {
@@ -124,14 +130,14 @@ button:disabled {
   margin: 0 auto;
   min-height: 100vh;
   min-height: 100dvh;
-  padding: 0 var(--rail-pad) calc(18px + env(safe-area-inset-bottom));
+  padding: 0 var(--rail-pad) calc(120px + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
 }
 
-/* With the rail minimised the room opens right out. */
+/* With the bubbles tucked away the room opens right out. */
 body.rail-min .stage {
   padding-left: 24px;
   padding-right: 24px;
@@ -219,16 +225,11 @@ body.ui-hidden .ui {
   }
 }
 
-h1 {
-  margin: clamp(10px, 2vh, 20px) 0 0;
-  font-size: clamp(26px, 7vw, 32px);
-  font-weight: 800;
-  letter-spacing: -0.03em;
-  line-height: 1.1;
-}
-
 .timer {
-  margin-top: clamp(14px, 3vh, 26px);
+  margin-top: clamp(16px, 3vh, 28px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 #clock {
@@ -243,6 +244,134 @@ h1 {
   margin-top: 10px;
   font-size: 15px;
   color: var(--dim);
+}
+
+/* Begin / End: one pill, shared by everyone in the room. */
+.session-btn {
+  margin-top: 16px;
+  padding: 12px 28px;
+  border-radius: 999px;
+  border: 1px solid var(--rim);
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--mist);
+  transition: opacity 0.25s, background 0.25s, border-color 0.25s, color 0.25s;
+}
+
+.session-btn:not(:disabled):active {
+  background: rgba(220, 232, 255, 0.16);
+}
+
+.session-btn:disabled {
+  opacity: 0.45;
+}
+
+.session-btn[data-state="running"] {
+  color: #f6b4a4;
+  border-color: rgba(246, 180, 164, 0.5);
+  background: rgba(70, 30, 26, 0.35);
+}
+
+/* ---------- Timeline ---------- */
+
+.timeline {
+  list-style: none;
+  margin: 22px auto 0;
+  padding: 0;
+  width: 100%;
+  max-width: 280px;
+  text-align: left;
+}
+
+.timeline:not(.full) {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 22%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 22%);
+}
+
+.tl-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 44px 1fr;
+  column-gap: 24px;
+  padding: 5px 0;
+  font-size: 13px;
+  line-height: 1.4;
+  animation: tl-in 0.6s var(--ease) both;
+}
+
+.tl-item::before {
+  content: "";
+  position: absolute;
+  left: 56px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(220, 232, 255, 0.16);
+}
+
+.tl-item:first-child::before {
+  top: 14px;
+}
+
+.tl-item:last-child::before {
+  bottom: calc(100% - 14px);
+}
+
+.tl-item:only-child::before {
+  display: none;
+}
+
+.tl-item::after {
+  content: "";
+  position: absolute;
+  left: 52px;
+  top: 11px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--moon);
+  box-shadow: 0 0 10px rgba(190, 210, 255, 0.7);
+}
+
+.tl-item.metta::after {
+  background: var(--pink);
+  box-shadow: 0 0 10px rgba(255, 120, 180, 0.8);
+}
+
+.tl-item.boon::after {
+  background: #fff;
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.95);
+}
+
+.tl-item.rejoice::after {
+  background: #ffd98a;
+  box-shadow: 0 0 10px rgba(255, 200, 100, 0.8);
+}
+
+.tl-item.quiet::after {
+  background: var(--faint);
+  box-shadow: none;
+}
+
+.tl-time {
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.tl-text {
+  color: var(--mist);
+  padding-left: 6px;
+}
+
+@keyframes tl-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
 }
 
 /* ---------- Joining ---------- */
@@ -316,11 +445,6 @@ h1 {
   color: var(--dim);
 }
 
-.line-row[hidden],
-.line-button[hidden] {
-  display: none;
-}
-
 .line-button {
   border: 0;
   border-radius: 999px;
@@ -353,6 +477,7 @@ body.ui-hidden .people {
 }
 
 .person {
+  position: relative;
   width: 68px;
   min-width: 0;
 }
@@ -372,6 +497,7 @@ body.ui-hidden .people {
     #10151f;
   box-shadow:
     inset 0 0 0 1px var(--rim),
+    0 0 0 0 rgba(190, 210, 255, 0),
     0 0 0 0 rgba(190, 210, 255, 0);
   transition: box-shadow 0.4s var(--ease);
 }
@@ -416,12 +542,73 @@ body.ui-hidden .people {
   from {
     box-shadow:
       inset 0 0 0 1px rgba(205, 222, 255, 0.7),
-      0 0 14px 2px rgba(170, 195, 255, 0.3);
+      0 0 14px 2px rgba(170, 195, 255, 0.3),
+      0 0 0 0 transparent;
   }
   to {
     box-shadow:
       inset 0 0 0 1px rgba(225, 236, 255, 0.95),
-      0 0 30px 8px rgba(170, 195, 255, 0.5);
+      0 0 30px 8px rgba(170, 195, 255, 0.5),
+      0 0 0 0 transparent;
+  }
+}
+
+/* Metta: a soft pink neon glow around the circle. */
+.person.glow-metta .avatar {
+  animation: glow-metta 7s ease-in-out both;
+}
+
+@keyframes glow-metta {
+  0%,
+  100% {
+    box-shadow:
+      inset 0 0 0 1px var(--rim),
+      0 0 0 0 rgba(255, 130, 190, 0),
+      0 0 0 0 rgba(255, 100, 170, 0);
+  }
+  15%,
+  85% {
+    box-shadow:
+      inset 0 0 0 2px rgba(255, 175, 215, 0.95),
+      0 0 16px 3px rgba(255, 120, 180, 0.85),
+      0 0 44px 12px rgba(255, 90, 160, 0.5);
+  }
+  50% {
+    box-shadow:
+      inset 0 0 0 2px rgba(255, 190, 224, 1),
+      0 0 22px 5px rgba(255, 130, 190, 0.95),
+      0 0 58px 16px rgba(255, 100, 170, 0.6);
+  }
+}
+
+/* Boon: a bright white light. */
+.person.glow-boon .avatar {
+  animation: glow-boon 7s ease-in-out both;
+}
+
+@keyframes glow-boon {
+  0%,
+  100% {
+    box-shadow:
+      inset 0 0 0 1px var(--rim),
+      0 0 0 0 rgba(255, 255, 255, 0),
+      0 0 0 0 rgba(225, 235, 255, 0);
+    filter: brightness(1);
+  }
+  15%,
+  85% {
+    box-shadow:
+      inset 0 0 0 2px rgba(255, 255, 255, 1),
+      0 0 22px 6px rgba(255, 255, 255, 0.9),
+      0 0 64px 20px rgba(225, 236, 255, 0.55);
+    filter: brightness(1.18);
+  }
+  50% {
+    box-shadow:
+      inset 0 0 0 3px rgba(255, 255, 255, 1),
+      0 0 30px 10px rgba(255, 255, 255, 1),
+      0 0 84px 28px rgba(225, 236, 255, 0.7);
+    filter: brightness(1.3);
   }
 }
 
@@ -431,10 +618,44 @@ body.ui-hidden .people {
   overflow-wrap: anywhere;
 }
 
+/* Camera and mic: green when on, red when off. */
 .status {
-  margin-top: 2px;
-  font-size: 11px;
-  color: var(--faint);
+  margin-top: 5px;
+  min-height: 16px;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+
+.mi {
+  display: block;
+  width: 16px;
+  height: 16px;
+  color: var(--on);
+  transition: color 0.3s;
+}
+
+.mi.off {
+  color: var(--off);
+}
+
+.mi svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.mi .slash {
+  opacity: 0;
+}
+
+.mi.off .slash {
+  opacity: 1;
 }
 
 .remote-audio {
@@ -458,120 +679,128 @@ body.ui-hidden .people {
   color: var(--faint);
 }
 
-/* ---------- Controls: a glass rail down the right edge ---------- */
+/* ---------- Bubbles ---------- */
 
-.controls {
-  position: fixed;
-  top: 50%;
-  right: calc(10px + env(safe-area-inset-right));
-  transform: translateY(-50%);
-  z-index: 3;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  padding: 6px;
-  border-radius: 34px;
-  background: rgba(14, 19, 31, 0.6);
+.bubble {
+  position: relative;
+  flex: none;
+  width: var(--bubble);
+  height: var(--bubble);
+  padding: 0;
+  border-radius: 50%;
   border: 1px solid var(--rim);
-  -webkit-backdrop-filter: blur(20px) saturate(1.2);
-  backdrop-filter: blur(20px) saturate(1.2);
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+  display: grid;
+  place-items: center;
+  color: var(--mist);
+  background:
+    radial-gradient(circle at 30% 24%, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.05) 46%, rgba(130, 160, 230, 0.1) 76%),
+    rgba(14, 19, 31, 0.52);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  backdrop-filter: blur(14px) saturate(1.2);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.35),
+    inset 0 -7px 12px rgba(150, 180, 255, 0.12),
+    0 8px 24px rgba(0, 0, 0, 0.4);
+  transition: filter 0.2s, opacity 0.3s, color 0.3s;
 }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .controls,
-  .join-row {
-    background: var(--glass-strong);
+  .bubble,
+  .join-row,
+  .session-btn {
+    background-color: var(--glass-strong);
   }
 }
 
-.rail-buttons {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+.bubble:not(:disabled):active {
+  filter: brightness(1.4);
 }
 
-.rail-toggle {
-  width: 36px;
-  height: 30px;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--dim);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.25s, color 0.25s;
+.bubble:disabled {
+  opacity: 0.38;
 }
 
-.rail-toggle:active {
-  background: rgba(220, 232, 255, 0.1);
-  color: var(--mist);
-}
-
-.rail-toggle svg {
-  width: 20px;
-  height: 20px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  transition: transform 0.4s var(--ease);
-}
-
-/* Minimised: only the small handle is left, pointing back out. */
-.controls.min {
-  padding: 4px;
-  border-radius: 999px;
-}
-
-.controls.min .rail-buttons {
-  display: none;
-}
-
-.controls.min .rail-toggle svg {
-  transform: rotate(180deg);
-}
-
-.control {
-  width: 58px;
-  padding: 10px 0 8px;
-  border: 0;
-  border-radius: 24px;
-  background: transparent;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  color: var(--mist);
-  transition: background 0.25s, opacity 0.25s;
-}
-
-.control:not(:disabled):active {
-  background: rgba(220, 232, 255, 0.1);
-}
-
-.control:disabled {
-  opacity: 0.35;
-}
-
-.ico {
+.bubble svg {
   display: block;
-  width: 24px;
-  height: 24px;
-}
-
-.ico svg {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   fill: none;
   stroke: currentColor;
   stroke-width: 1.7;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+/* ---------- Room controls: bubbles that stack into one handle, lower right ---------- */
+
+.controls {
+  position: fixed;
+  right: calc(14px + env(safe-area-inset-right));
+  bottom: calc(30px + env(safe-area-inset-bottom));
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.rail-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.control {
+  pointer-events: auto;
+  /* Sliding out: the nearest bubble leaves the handle first, each with a soft overshoot. */
+  transition:
+    transform 0.65s cubic-bezier(0.34, 1.4, 0.64, 1) calc((var(--k) - 1) * 55ms),
+    opacity 0.35s ease calc((var(--k) - 1) * 55ms),
+    visibility 0s,
+    filter 0.2s,
+    color 0.3s;
+}
+
+/* Minimised: every bubble glides down into the handle and shrinks away. */
+.controls.min .control {
+  transform: translateY(calc(var(--k) * 58px)) scale(0.3);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    transform 0.5s cubic-bezier(0.55, 0, 0.35, 1) calc((4 - var(--k)) * 45ms),
+    opacity 0.28s ease calc((4 - var(--k)) * 45ms + 0.22s),
+    visibility 0s linear 0.85s,
+    filter 0.2s,
+    color 0.3s;
+}
+
+.rail-toggle {
+  pointer-events: auto;
+  width: 44px;
+  height: 44px;
+}
+
+.rail-toggle svg {
+  grid-area: 1 / 1;
+  transition: opacity 0.3s, transform 0.5s var(--ease);
+}
+
+.rail-toggle .i-bubbles {
+  opacity: 0;
+  transform: scale(0.5) rotate(-30deg);
+}
+
+.controls.min .rail-toggle .i-down {
+  opacity: 0;
+  transform: scale(0.5) rotate(30deg);
+}
+
+.controls.min .rail-toggle .i-bubbles {
+  opacity: 1;
+  transform: none;
 }
 
 .control .slash {
@@ -583,26 +812,499 @@ body.ui-hidden .people {
 }
 
 .control[data-on="false"] {
-  color: var(--dim);
-}
-
-#start .i-pause,
-#start .i-restart {
-  display: none;
-}
-
-#start[data-state="running"] .i-play,
-#start[data-state="done"] .i-play {
-  display: none;
-}
-
-#start[data-state="running"] .i-pause,
-#start[data-state="done"] .i-restart {
-  display: block;
+  color: var(--off);
 }
 
 .control.leave {
   color: #f2a592;
+}
+
+.control .dot {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--pink);
+  box-shadow: 0 0 8px rgba(255, 120, 180, 0.9);
+}
+
+/* ---------- Action keys: a bubble in the lower left that opens sideways ---------- */
+
+.actions {
+  position: fixed;
+  left: calc(14px + env(safe-area-inset-left));
+  bottom: calc(30px + env(safe-area-inset-bottom));
+  z-index: 3;
+  display: none;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.in-room .actions {
+  display: flex;
+}
+
+.actions-toggle,
+.action-key {
+  pointer-events: auto;
+}
+
+.actions-toggle svg {
+  grid-area: 1 / 1;
+  transition: opacity 0.3s, transform 0.5s var(--ease);
+}
+
+.actions-toggle .i-close {
+  opacity: 0;
+  transform: scale(0.5) rotate(-45deg);
+}
+
+.actions.open .actions-toggle .i-lotus {
+  opacity: 0;
+  transform: scale(0.5) rotate(45deg);
+}
+
+.actions.open .actions-toggle .i-close {
+  opacity: 1;
+  transform: none;
+}
+
+.action-keys {
+  display: flex;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.action-key {
+  /* Opening: the keys slide out of the lotus bubble, one after another. */
+  transition:
+    transform 0.65s cubic-bezier(0.34, 1.4, 0.64, 1) calc((var(--j) - 1) * 60ms),
+    opacity 0.35s ease calc((var(--j) - 1) * 60ms),
+    visibility 0s,
+    filter 0.2s;
+}
+
+.actions:not(.open) .action-key {
+  transform: translateX(calc(var(--j) * -58px)) scale(0.3);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    transform 0.5s cubic-bezier(0.55, 0, 0.35, 1) calc((3 - var(--j)) * 45ms),
+    opacity 0.28s ease calc((3 - var(--j)) * 45ms + 0.22s),
+    visibility 0s linear 0.8s,
+    filter 0.2s;
+}
+
+.key-lbl {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--dim);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.key-metta {
+  color: var(--pink);
+}
+
+.key-boon {
+  color: #fff;
+}
+
+.key-rejoice .emoji {
+  font-size: 22px;
+  line-height: 1;
+}
+
+/* ---------- Messages ---------- */
+
+.sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 6;
+  height: min(480px, 62vh);
+  height: min(480px, 62dvh);
+  display: flex;
+  flex-direction: column;
+  padding-bottom: env(safe-area-inset-bottom);
+  border-radius: 26px 26px 0 0;
+  border: 1px solid var(--rim);
+  border-bottom: 0;
+  background: rgba(9, 13, 22, 0.9);
+  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: blur(24px);
+  box-shadow: 0 -20px 60px rgba(0, 0, 0, 0.5);
+  animation: sheet-in 0.45s var(--ease) both;
+}
+
+@keyframes sheet-in {
+  from {
+    transform: translateY(40%);
+    opacity: 0;
+  }
+}
+
+@media (min-width: 600px) {
+  .sheet {
+    left: 50%;
+    right: auto;
+    width: 520px;
+    margin-left: -260px;
+  }
+}
+
+.sheet-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 18px 8px 22px;
+  font-weight: 800;
+  font-size: 16px;
+}
+
+.sheet-close {
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  display: grid;
+  place-items: center;
+  color: var(--dim);
+}
+
+.sheet-close svg,
+.send-btn svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.chat-list {
+  flex: 1;
+  list-style: none;
+  margin: 0;
+  padding: 6px 18px 10px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overscroll-behavior: contain;
+}
+
+.chat-empty {
+  margin: auto;
+  color: var(--faint);
+  font-size: 13px;
+}
+
+.msg {
+  max-width: 82%;
+  align-self: flex-start;
+  animation: tl-in 0.4s var(--ease) both;
+}
+
+.msg.mine {
+  align-self: flex-end;
+  text-align: right;
+}
+
+.msg .who {
+  font-size: 11px;
+  color: var(--faint);
+  margin: 0 8px 3px;
+}
+
+.msg .text {
+  display: inline-block;
+  padding: 9px 14px;
+  border-radius: 18px;
+  background: rgba(220, 232, 255, 0.1);
+  font-size: 15px;
+  line-height: 1.4;
+  text-align: left;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.msg.mine .text {
+  background: rgba(190, 210, 255, 0.24);
+}
+
+.chat-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px 14px;
+}
+
+.chat-form input {
+  min-width: 0;
+  flex: 1;
+  padding: 12px 18px;
+  border-radius: 999px;
+  border: 1px solid var(--rim);
+  background: rgba(18, 24, 38, 0.7);
+  font-size: 16px;
+}
+
+.chat-form input:focus-visible {
+  outline: none;
+  border-color: rgba(200, 218, 255, 0.55);
+}
+
+.chat-form input::placeholder {
+  color: var(--faint);
+}
+
+.send-btn {
+  width: 44px;
+  height: 44px;
+  flex: none;
+  border: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--mist);
+  color: #0a0e18;
+}
+
+/* ---------- Blessings, toasts and the summary ---------- */
+
+.fx {
+  position: fixed;
+  inset: 0;
+  z-index: 7;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.float-text {
+  position: absolute;
+  max-width: 230px;
+  text-align: center;
+  line-height: 1.35;
+  animation: float-up 6s ease-out both;
+}
+
+@keyframes float-up {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 16px);
+  }
+  18% {
+    opacity: 1;
+  }
+  72% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -70px);
+  }
+}
+
+.float-text.metta {
+  font-style: italic;
+  font-weight: 300;
+  font-size: 17px;
+  color: #ffd6ea;
+  text-shadow:
+    0 0 10px rgba(255, 120, 180, 0.95),
+    0 0 26px rgba(255, 90, 160, 0.65);
+}
+
+.float-text.boon {
+  font-weight: 600;
+  font-size: 18px;
+  letter-spacing: 0.05em;
+  color: #fff;
+  text-shadow:
+    0 0 12px rgba(255, 255, 255, 0.95),
+    0 0 32px rgba(200, 218, 255, 0.8);
+}
+
+.float-text.rejoice {
+  left: 50%;
+  top: 36%;
+  max-width: none;
+  white-space: nowrap;
+  font-size: clamp(38px, 12vw, 54px);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #fff6dd;
+  text-shadow:
+    0 0 18px rgba(255, 214, 140, 0.8),
+    0 0 46px rgba(255, 190, 100, 0.5);
+  animation: rejoice-up 5s ease-out both;
+}
+
+@keyframes rejoice-up {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 26px) scale(0.9);
+  }
+  20% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+  65% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -90px) scale(1.05);
+  }
+}
+
+.toast {
+  position: fixed;
+  top: calc(14px + env(safe-area-inset-top));
+  left: 50%;
+  z-index: 7;
+  max-width: min(80vw, 340px);
+  padding: 10px 18px;
+  border-radius: 999px;
+  border: 1px solid var(--rim);
+  background: var(--glass-strong);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: toast 4s ease both;
+}
+
+.toast b {
+  font-weight: 600;
+  margin-right: 6px;
+}
+
+@keyframes toast {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -12px);
+  }
+  8%,
+  88% {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -8px);
+  }
+}
+
+.summary {
+  position: fixed;
+  inset: 0;
+  z-index: 8;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(2, 4, 10, 0.72);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  animation: fade-in 0.5s ease both;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.summary-card {
+  width: min(88vw, 360px);
+  max-height: 88vh;
+  max-height: 88dvh;
+  overflow-y: auto;
+  padding: 30px 24px 24px;
+  border-radius: 30px;
+  border: 1px solid var(--rim);
+  background:
+    radial-gradient(90% 50% at 50% 0%, rgba(190, 210, 255, 0.18), transparent 70%),
+    rgba(10, 14, 24, 0.92);
+  text-align: center;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
+  animation: card-in 0.8s var(--ease) both;
+}
+
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.96);
+  }
+}
+
+.sum-emoji {
+  font-size: 40px;
+  line-height: 1;
+}
+
+.summary h2 {
+  margin: 14px 0 0;
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.sum-sadhu {
+  margin: 16px 0 0;
+  font-size: 42px;
+  font-weight: 200;
+  font-style: italic;
+  letter-spacing: 0.01em;
+  color: #fff6dd;
+  text-shadow: 0 0 24px rgba(255, 214, 140, 0.55);
+}
+
+.sum-boon {
+  margin: 4px 0 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #cfe0ff;
+}
+
+.timeline.full {
+  max-width: none;
+  margin-top: 22px;
+  max-height: 30vh;
+  max-height: 30dvh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.timeline.full:empty {
+  display: none;
+}
+
+.timeline.full .tl-item {
+  animation: none;
+}
+
+.sum-close {
+  margin-top: 20px;
+  padding-left: 36px;
+  padding-right: 36px;
 }
 
 /* ---------- After joining: the moon shrinks to make room for people ---------- */
@@ -612,7 +1314,8 @@ body.ui-hidden .people {
   width: min(30vw, 116px, 15dvh);
 }
 
-.in-room .join {
+.in-room .join,
+.in-room .foot {
   display: none;
 }
 
@@ -620,10 +1323,8 @@ body.ui-hidden .people {
 
 @media (max-width: 360px) {
   :root {
-    --rail-pad: 66px;
-  }
-  .control {
-    width: 52px;
+    --rail-pad: 62px;
+    --bubble: 46px;
   }
 }
 
@@ -634,9 +1335,28 @@ body.ui-hidden .people {
     animation: none !important;
     transition: none !important;
   }
+
+  /* Without animation the glows still show while the blessing lasts. */
+  .person.glow-metta .avatar {
+    box-shadow:
+      inset 0 0 0 2px rgba(255, 175, 215, 0.95),
+      0 0 16px 3px rgba(255, 120, 180, 0.85),
+      0 0 44px 12px rgba(255, 90, 160, 0.5);
+  }
+
+  .person.glow-boon .avatar {
+    box-shadow:
+      inset 0 0 0 2px rgba(255, 255, 255, 1),
+      0 0 22px 6px rgba(255, 255, 255, 0.9),
+      0 0 64px 20px rgba(225, 236, 255, 0.55);
+  }
+
+  .float-text {
+    transform: translateX(-50%);
+  }
 }
 
-/* ---------- Edge light: the rail catches the same moonlight as the sphere ---------- */
+/* ---------- Edge light: the name field catches the same moonlight as the sphere ---------- */
 
 @property --rim-angle {
   syntax: "<angle>";
@@ -648,14 +1368,14 @@ body.ui-hidden .people {
   position: relative;
 }
 
-/* A thin ring of light that travels slowly around the edge. */
-.controls::before,
-.controls::after,
 .join-row::before {
   content: "";
   position: absolute;
+  inset: -1px;
+  padding: 1px;
   border-radius: inherit;
   pointer-events: none;
+  opacity: 0.55;
   background: conic-gradient(
     from var(--rim-angle),
     transparent 0 50%,
@@ -668,45 +1388,13 @@ body.ui-hidden .people {
   -webkit-mask-composite: xor;
   mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   mask-composite: exclude;
-  animation: rim-turn 14s linear infinite;
-}
-
-.controls::before {
-  inset: -1px;
-  padding: 1.5px;
-}
-
-/* The same ring, wider and blurred, for the glow around and just inside the edge. */
-.controls::after {
-  inset: -3px;
-  padding: 4px;
-  filter: blur(9px);
-  opacity: 0.6;
-}
-
-.join-row::before {
-  inset: -1px;
-  padding: 1px;
-  opacity: 0.55;
-  animation-duration: 20s;
+  animation: rim-turn 20s linear infinite;
 }
 
 @keyframes rim-turn {
   to {
     --rim-angle: 360deg;
   }
-}
-
-/* A button that is switched on glows from within. */
-#start[data-state="running"] {
-  background: rgba(200, 218, 255, 0.14);
-  box-shadow:
-    inset 0 0 0 1px rgba(210, 225, 255, 0.4),
-    0 0 20px rgba(160, 190, 255, 0.4);
-}
-
-.control:not(:disabled):hover {
-  box-shadow: 0 0 18px rgba(180, 205, 255, 0.25);
 }
 
 .join-row:focus-within {
