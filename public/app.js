@@ -15,6 +15,10 @@ let cameraEnabled = false;
 let seconds = SESSION_SECONDS;
 let running = false;
 let interval = null;
+let liffReady = false;
+let lineProfile = null; // { displayName, pictureUrl } when signed in with LINE
+let idToken = null; // sent to the server so it can verify who you are
+let nameLocked = false;
 
 const $ = (id) => document.getElementById(id);
 const video = $("localVideo");
@@ -33,6 +37,9 @@ const leaveButton = $("leave");
 const people = $("people");
 const clock = $("clock");
 const timerState = $("timerState");
+const lineRow = $("lineRow");
+const lineStatus = $("lineStatus");
+const lineLogin = $("lineLogin");
 
 /* ---------- UI helpers ---------- */
 
@@ -41,7 +48,36 @@ function setControls(connected) {
   cameraButton.disabled = !connected;
   leaveButton.disabled = !connected;
   joinButton.disabled = connected || connecting;
-  nameInput.disabled = connected || connecting;
+  nameInput.disabled = connected || connecting || nameLocked;
+}
+
+// Only LINE profile pictures are shown.
+function setAvatarPhoto(avatar, url) {
+  if (
+    !url ||
+    typeof url !== "string" ||
+    !url.startsWith("https://profile.line-scdn.net/")
+  ) {
+    return;
+  }
+  if (avatar.querySelector(".avatar-photo")) return;
+
+  const photo = document.createElement("img");
+  photo.className = "avatar-photo";
+  photo.alt = "";
+  photo.referrerPolicy = "no-referrer";
+  avatar.prepend(photo);
+  photo.addEventListener("load", () => avatar.classList.add("has-photo"));
+  photo.addEventListener("error", () => photo.remove());
+  photo.src = url;
+}
+
+function pictureFromMetadata(participant) {
+  try {
+    return JSON.parse(participant.metadata || "{}").picture || null;
+  } catch {
+    return null;
+  }
 }
 
 function setMicLabel(on) {
@@ -97,6 +133,7 @@ function participantCard(participant) {
   face.className = "camera-placeholder";
   face.textContent = "🧘🏻";
   avatar.append(face);
+  setAvatarPhoto(avatar, pictureFromMetadata(participant));
 
   const name = document.createElement("div");
   name.className = "name";
@@ -167,6 +204,22 @@ function wireRoomEvents(activeRoom) {
     track.detach().forEach((element) => element.remove());
   });
 
+  // When someone turns their camera off, show their photo again.
+  const setRemoteVideoHidden = (publication, participant, hidden) => {
+    if (publication.kind !== Track.Kind.Video) return;
+    const card = document.getElementById("remote-" + participant.identity);
+    const remoteVideo = card && card.querySelector("video");
+    if (remoteVideo) remoteVideo.hidden = hidden;
+    const face = card && card.querySelector(".camera-placeholder");
+    if (face && !(card.querySelector(".avatar-photo"))) face.hidden = !hidden;
+  };
+  activeRoom.on(RoomEvent.TrackMuted, (publication, participant) =>
+    setRemoteVideoHidden(publication, participant, true),
+  );
+  activeRoom.on(RoomEvent.TrackUnmuted, (publication, participant) =>
+    setRemoteVideoHidden(publication, participant, false),
+  );
+
   activeRoom.on(RoomEvent.ParticipantConnected, (participant) => {
     participantCard(participant);
     updateCount();
@@ -197,10 +250,20 @@ async function fetchToken(participantName) {
   const response = await fetch("/get-token", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ roomName: ROOM_NAME, participantName }),
+    body: JSON.stringify({
+      roomName: ROOM_NAME,
+      participantName,
+      idToken: lineProfile ? idToken : undefined,
+    }),
   });
 
   const data = await response.json();
+  if (response.status === 401 && liffReady) {
+    // LINE login expired: sign in again (this reloads the page).
+    liff.logout();
+    liff.login({ redirectUri: window.location.href });
+    throw Error(data.error || "Please log in with LINE again.");
+  }
   if (!response.ok) throw Error(data.error || "Could not get room access.");
   if (!data.url || !data.token) {
     throw Error("The server did not return a room URL and token.");
@@ -232,6 +295,9 @@ async function joinRoom() {
 
     localName.textContent = participantName;
     localStatus.textContent = "Connected";
+    if (lineProfile) {
+      setAvatarPhoto(localPerson.querySelector(".avatar"), lineProfile.pictureUrl);
+    }
 
     for (const participant of room.remoteParticipants.values()) {
       participantCard(participant);
@@ -293,7 +359,7 @@ async function joinRoom() {
   } finally {
     connecting = false;
     joinButton.disabled = !!room;
-    nameInput.disabled = !!room;
+    nameInput.disabled = !!room || nameLocked;
   }
 }
 
@@ -309,7 +375,7 @@ async function leaveRoom() {
     "You've left the room. Join again whenever you're ready.";
   setControls(false);
   joinButton.disabled = false;
-  nameInput.disabled = false;
+  nameInput.disabled = nameLocked;
 }
 
 /* ---------- Mic and camera ---------- */
@@ -379,6 +445,51 @@ function toggleTimer() {
   }, 1000);
 }
 
+/* ---------- LINE login (LIFF) ---------- */
+
+async function initLine() {
+  try {
+    const response = await fetch("/config");
+    const config = await response.json();
+    if (!config.liffId || !window.liff) return; // LINE login not set up: guests only
+
+    await liff.init({ liffId: config.liffId });
+    liffReady = true;
+    lineRow.hidden = false;
+
+    if (liff.isLoggedIn()) {
+      lineProfile = await liff.getProfile();
+      idToken = liff.getIDToken();
+      if (!idToken) {
+        // Token missing: the LIFF app needs the "openid" scope.
+        lineProfile = null;
+        lineStatus.textContent = "LINE login isn't fully set up yet.";
+        return;
+      }
+
+      nameInput.value = lineProfile.displayName;
+      nameLocked = true;
+      nameInput.disabled = true;
+      lineStatus.textContent = "Signed in with LINE as " + lineProfile.displayName;
+      setAvatarPhoto(
+        localPerson.querySelector(".avatar"),
+        lineProfile.pictureUrl,
+      );
+      message.textContent = "Tap Join room to connect with others.";
+    } else {
+      lineStatus.textContent = "Join as a guest, or sign in with LINE.";
+      lineLogin.hidden = false;
+      lineLogin.addEventListener("click", () =>
+        liff.login({ redirectUri: window.location.href }),
+      );
+    }
+  } catch (error) {
+    // LINE login is optional: if anything fails, guests can still join.
+    console.error("LINE login unavailable:", error);
+    lineRow.hidden = true;
+  }
+}
+
 /* ---------- Wiring ---------- */
 
 joinButton.addEventListener("click", joinRoom);
@@ -390,3 +501,5 @@ leaveButton.addEventListener("click", leaveRoom);
 window.addEventListener("beforeunload", () => {
   if (room) room.disconnect();
 });
+
+initLine();

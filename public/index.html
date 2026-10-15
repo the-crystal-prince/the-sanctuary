@@ -6,6 +6,7 @@
 <meta name="theme-color" content="#10251e">
 <title>The Sanctuary</title>
 <link rel="stylesheet" href="style.css">
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 </head>
 <body>
 <header>
@@ -18,6 +19,10 @@
 <div class="room-top">
 <strong>🌲 Forest Room</strong>
 <span class="pill" id="count">0 / 8 people</span>
+</div>
+<div class="line-row" id="lineRow" hidden>
+<span id="lineStatus"></span>
+<button class="line-button" id="lineLogin" type="button" hidden>Log in with LINE</button>
 </div>
 <div class="join-row">
 <input id="participantName" type="text" maxlength="50" placeholder="Your name" aria-label="Your name">

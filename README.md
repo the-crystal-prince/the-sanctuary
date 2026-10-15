@@ -16,6 +16,7 @@ Set these in Render (or in a local `.env`, which is git-ignored):
 | `LIVEKIT_URL` | Your LiveKit project URL, e.g. `wss://your-project.livekit.cloud` |
 | `LIVEKIT_API_KEY` | LiveKit API key |
 | `LIVEKIT_API_SECRET` | LiveKit API secret |
+| `LIFF_ID` | Optional. Your LIFF ID, e.g. `1234567890-AbCdEfGh`. Turns on LINE login. |
 
 ## Run locally
 
@@ -32,6 +33,19 @@ Then open http://localhost:3000.
 - Start command: `npm start`
 - Health check path: `/health`
 - Add the three environment variables above.
+
+## LINE login (optional)
+
+With `LIFF_ID` set, people opening the room inside LINE are signed in automatically, and their LINE name and photo appear in the room. Anyone else can still join as a guest or tap "Log in with LINE". Without `LIFF_ID`, everyone joins as a guest.
+
+Setup in the [LINE Developers Console](https://developers.line.biz/console/):
+1. Open your **LINE Login** channel and go to the **LIFF** tab, then add a LIFF app.
+2. Endpoint URL: your Render site address (must be `https`).
+3. Scopes: turn on **profile** and **openid**.
+4. Copy the LIFF ID into the `LIFF_ID` variable on Render.
+5. Share the LIFF URL (`https://liff.line.me/<LIFF_ID>`) as your link and bot button.
+
+The server checks each LINE login with LINE before trusting the name and photo.
 
 ## Adding rooms
 
