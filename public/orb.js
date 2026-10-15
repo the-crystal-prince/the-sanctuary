@@ -89,6 +89,36 @@ function start() {
 
   function draw() {
     ctx.clearRect(0, 0, SIZE, SIZE);
+
+    // How bright the edge light is: a little stronger while the timer runs,
+    // and swelling slowly with the breathing rhythm.
+    const glow = 0.85 + 0.15 * energy + 0.08 * Math.sin((time * TAU) / 7);
+
+    // Halo: light spilling out past the glass edge. Drawn first; the opaque
+    // orb body then covers the part that falls inside the sphere.
+    ctx.globalCompositeOperation = "lighter";
+    const halo = ctx.createRadialGradient(cx, cy, R * 0.9, cx, cy, R * 1.18);
+    halo.addColorStop(0, `rgba(255,190,120,${0.34 * glow})`);
+    halo.addColorStop(0.37, `rgba(255,180,110,${0.28 * glow})`);
+    halo.addColorStop(0.62, `rgba(255,160,90,${0.1 * glow})`);
+    halo.addColorStop(1, "rgba(255,160,90,0)");
+    ctx.fillStyle = halo;
+    ctx.fillRect(0, 0, SIZE, SIZE);
+    const cool = ctx.createRadialGradient(
+      cx + R * 0.1,
+      cy - R * 0.1,
+      R * 0.9,
+      cx + R * 0.1,
+      cy - R * 0.1,
+      R * 1.16,
+    );
+    cool.addColorStop(0, `rgba(120,170,255,${0.16 * glow})`);
+    cool.addColorStop(0.4, `rgba(120,170,255,${0.1 * glow})`);
+    cool.addColorStop(1, "rgba(120,170,255,0)");
+    ctx.fillStyle = cool;
+    ctx.fillRect(0, 0, SIZE, SIZE);
+    ctx.globalCompositeOperation = "source-over";
+
     ctx.save();
     ctx.beginPath();
     ctx.arc(cx, cy, R, 0, TAU);
@@ -150,10 +180,41 @@ function start() {
     const rim = ctx.createRadialGradient(cx, cy, R * 0.72, cx, cy, R);
     rim.addColorStop(0, "rgba(255,244,226,0)");
     rim.addColorStop(0.78, "rgba(255,244,226,0.05)");
-    rim.addColorStop(0.95, "rgba(255,240,220,0.16)");
+    rim.addColorStop(0.95, "rgba(255,240,220,0.18)");
     rim.addColorStop(1, "rgba(255,248,236,0.34)");
     ctx.fillStyle = rim;
     ctx.fillRect(0, 0, SIZE, SIZE);
+
+    // A light that travels slowly around the glass edge, with a prism
+    // fringe (amber leading, blue trailing), and a fainter one opposite.
+    if (ctx.createConicGradient) {
+      ctx.globalCompositeOperation = "lighter";
+      ctx.lineWidth = 10;
+      ctx.lineCap = "butt";
+      const lights = [
+        { angle: (time * TAU) / 16, strength: 1 },
+        { angle: Math.PI - (time * TAU) / 26, strength: 0.5 },
+      ];
+      for (const light of lights) {
+        const a = light.strength * glow;
+        const g = ctx.createConicGradient(light.angle, cx, cy);
+        g.addColorStop(0, "rgba(255,150,80,0)");
+        g.addColorStop(0.5, "rgba(255,150,80,0)");
+        g.addColorStop(0.64, `rgba(255,170,90,${0.5 * a})`);
+        g.addColorStop(0.74, `rgba(255,250,240,${0.95 * a})`);
+        g.addColorStop(0.84, `rgba(120,170,255,${0.55 * a})`);
+        g.addColorStop(0.95, "rgba(120,170,255,0)");
+        g.addColorStop(1, "rgba(120,170,255,0)");
+        ctx.beginPath();
+        ctx.arc(cx, cy, R - 4, 0, TAU);
+        ctx.strokeStyle = g;
+        ctx.shadowColor = `rgba(255,190,130,${0.7 * a})`;
+        ctx.shadowBlur = 26;
+        ctx.stroke();
+      }
+      ctx.shadowBlur = 0;
+      ctx.globalCompositeOperation = "source-over";
+    }
 
     // Highlight on the upper left, warm light through the bottom.
     ctx.lineCap = "round";
@@ -175,9 +236,9 @@ function start() {
 
     // Outer rim, with a faint colour split like real glass.
     ctx.globalCompositeOperation = "lighter";
-    ring(-1.5, "110,160,255", 0.16);
-    ring(1.5, "255,170,90", 0.16);
-    ring(0, "255,246,230", 0.22);
+    ring(-2, "110,160,255", 0.2);
+    ring(2, "255,170,90", 0.2);
+    ring(0, "255,246,230", 0.2);
     ctx.globalCompositeOperation = "source-over";
   }
 

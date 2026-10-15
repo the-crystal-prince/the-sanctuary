@@ -482,10 +482,6 @@ h1 {
   display: block;
 }
 
-#start[data-state="running"] {
-  background: rgba(255, 217, 160, 0.14);
-}
-
 .control.leave {
   color: #f2a592;
 }
@@ -524,4 +520,86 @@ h1 {
     animation: none !important;
     transition: none !important;
   }
+}
+
+/* ---------- Edge light: the menu catches the same light as the orb ---------- */
+
+@property --rim-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+.controls,
+.join-row {
+  position: relative;
+}
+
+.controls {
+  position: sticky;
+}
+
+/* A thin ring of light that travels slowly around the edge. */
+.controls::before,
+.controls::after,
+.join-row::before {
+  content: "";
+  position: absolute;
+  border-radius: inherit;
+  pointer-events: none;
+  background: conic-gradient(
+    from var(--rim-angle),
+    transparent 0 50%,
+    rgba(255, 170, 90, 0.85) 64%,
+    rgba(255, 250, 240, 1) 74%,
+    rgba(120, 170, 255, 0.85) 84%,
+    transparent 95%
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  animation: rim-turn 14s linear infinite;
+}
+
+.controls::before {
+  inset: -1px;
+  padding: 1.5px;
+}
+
+/* The same ring, wider and blurred, for the glow around and just inside the edge. */
+.controls::after {
+  inset: -3px;
+  padding: 4px;
+  filter: blur(9px);
+  opacity: 0.75;
+}
+
+.join-row::before {
+  inset: -1px;
+  padding: 1px;
+  opacity: 0.55;
+  animation-duration: 20s;
+}
+
+@keyframes rim-turn {
+  to {
+    --rim-angle: 360deg;
+  }
+}
+
+/* A button that is switched on glows from within. */
+#start[data-state="running"] {
+  background: rgba(255, 217, 160, 0.14);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 217, 160, 0.4),
+    0 0 20px rgba(255, 190, 120, 0.4);
+}
+
+.control:not(:disabled):hover {
+  box-shadow: 0 0 18px rgba(255, 200, 140, 0.25);
+}
+
+.join-row:focus-within {
+  box-shadow: 0 0 0 1px rgba(255, 217, 160, 0.5), 0 0 30px rgba(255, 190, 120, 0.28);
 }
