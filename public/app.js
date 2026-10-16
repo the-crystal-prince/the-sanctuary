@@ -31,6 +31,9 @@ let liffId = null;
 let lineProfile = null; // { displayName, pictureUrl } when signed in with LINE
 let idToken = null; // sent to the server so it can verify who you are
 let nameLocked = false;
+let ytApi = null; // resolves once YouTube's player script has loaded
+let ytPlayer = null;
+let musicTicket = 0; // bumped on every stop, so a slow load can't start late
 
 // Everyone's clocks are lined up to the server's, so timers agree.
 let clockOffset = 0;
@@ -76,6 +79,12 @@ const dockJoin = $("dockJoin");
 const joinBadge = $("joinBadge");
 const joinList = $("joinList");
 const sessCard = $("sessCard");
+const musicToggle = $("musicToggle");
+const musicCard = $("musicCard");
+const musicForm = $("musicForm");
+const musicInput = $("musicInput");
+const musicStage = $("musicStage");
+const musicNote = $("musicNote");
 const chatSheet = $("chatSheet");
 const chatList = $("chatList");
 const chatForm = $("chatForm");
@@ -175,6 +184,7 @@ function setControls(connected) {
   micButton.disabled = !connected;
   cameraButton.disabled = !connected;
   chatToggle.disabled = !connected;
+  musicToggle.disabled = !connected;
   leaveButton.disabled = !connected;
   joinButton.disabled = connected || connecting;
   joinButton.textContent = connecting ? "Joining…" : "Join";
@@ -184,6 +194,7 @@ function setControls(connected) {
     // Leaving the room always brings the interface back.
     document.body.classList.remove("ui-hidden");
     closeChat();
+    closeMusic();
     closeSessCard();
     closeJoinList();
     setActionsOpen(false);
@@ -1550,6 +1561,162 @@ async function initLine() {
   }
 }
 
+/* ---------- Music (YouTube) ---------- */
+
+// Plays a YouTube video or playlist through YouTube's own embedded player.
+// The player stays on screen while it plays (YouTube doesn't allow hiding the
+// picture to play only the sound), and closing the card stops the music.
+
+const MUSIC_NOTE = "Plays through YouTube's own player. Closing this stops it.";
+
+function loadYouTubeApi() {
+  if (ytApi) return ytApi;
+  ytApi = new Promise((resolve, reject) => {
+    if (window.YT && window.YT.Player) {
+      resolve(window.YT);
+      return;
+    }
+    const previous = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => {
+      if (previous) previous();
+      resolve(window.YT);
+    };
+    const script = document.createElement("script");
+    script.src = "https://www.youtube.com/iframe_api";
+    script.onerror = () => {
+      ytApi = null; // let the next try start fresh
+      reject(new Error("YouTube couldn't be reached. Try again in a moment."));
+    };
+    document.head.appendChild(script);
+  });
+  return ytApi;
+}
+
+// Pulls a video and/or playlist out of whatever was pasted. Returns null if
+// it isn't a YouTube link.
+function parseYouTube(text) {
+  const value = String(text || "").trim();
+  if (!value) return null;
+  if (/^[\w-]{11}$/.test(value)) return { video: value, list: null };
+
+  let url;
+  try {
+    url = new URL(/^https?:\/\//i.test(value) ? value : "https://" + value);
+  } catch (error) {
+    return null;
+  }
+
+  const host = url.hostname.replace(/^(www|m|music)\./, "");
+  if (!["youtube.com", "youtu.be", "youtube-nocookie.com"].includes(host)) {
+    return null;
+  }
+
+  let video = url.searchParams.get("v");
+  if (!video && host === "youtu.be") video = url.pathname.slice(1).split("/")[0];
+  if (!video) {
+    const match = url.pathname.match(/^\/(?:embed|shorts|live|v)\/([\w-]{11})/);
+    if (match) video = match[1];
+  }
+  if (video && !/^[\w-]{11}$/.test(video)) video = null;
+
+  let list = url.searchParams.get("list");
+  if (list && !/^[\w-]+$/.test(list)) list = null;
+
+  return video || list ? { video, list } : null;
+}
+
+function stopMusic() {
+  musicTicket++;
+  if (ytPlayer) {
+    try {
+      ytPlayer.destroy();
+    } catch (error) {
+      // already gone
+    }
+    ytPlayer = null;
+  }
+  musicStage.replaceChildren();
+  musicStage.hidden = true;
+  musicToggle.classList.remove("playing");
+}
+
+function openMusic() {
+  musicCard.hidden = false;
+  musicToggle.setAttribute("aria-expanded", "true");
+  if (!musicInput.value) {
+    try {
+      musicInput.value = localStorage.getItem("sanctuaryMusic") || "";
+    } catch (error) {
+      // remembering the last link is optional
+    }
+  }
+}
+
+function closeMusic() {
+  stopMusic();
+  musicCard.hidden = true;
+  musicToggle.setAttribute("aria-expanded", "false");
+  musicNote.textContent = MUSIC_NOTE;
+}
+
+async function playMusic(source) {
+  const found = parseYouTube(source);
+  if (!found) {
+    musicNote.textContent = "That doesn't look like a YouTube link.";
+    return;
+  }
+
+  try {
+    localStorage.setItem("sanctuaryMusic", String(source).trim());
+  } catch (error) {
+    // remembering the last link is optional
+  }
+
+  stopMusic();
+  const ticket = musicTicket;
+  musicNote.textContent = "Loading…";
+
+  let YT;
+  try {
+    YT = await loadYouTubeApi();
+  } catch (error) {
+    musicNote.textContent = error.message;
+    return;
+  }
+  if (ticket !== musicTicket) return; // closed or replaced while loading
+
+  const target = document.createElement("div");
+  musicStage.append(target);
+  musicStage.hidden = false;
+
+  const playerVars = { autoplay: 1, playsinline: 1, rel: 0 };
+  if (found.list) {
+    playerVars.list = found.list;
+    if (!found.video) playerVars.listType = "playlist";
+  }
+
+  ytPlayer = new YT.Player(target, {
+    width: "100%",
+    height: "100%",
+    videoId: found.video || undefined,
+    playerVars,
+    events: {
+      onReady: (event) => {
+        event.target.playVideo();
+        musicToggle.classList.add("playing");
+        musicNote.textContent = MUSIC_NOTE;
+      },
+      onAutoplayBlocked: () => {
+        musicNote.textContent = "Tap the video to start the music.";
+      },
+      onError: () => {
+        stopMusic();
+        musicNote.textContent = "YouTube can't play that one here. Try another link.";
+      },
+    },
+  });
+}
+
 /* ---------- Bubbles and the quiet view ---------- */
 
 // The room bubbles stack into one handle so the room opens right out.
@@ -1582,7 +1749,11 @@ document.addEventListener("click", (event) => {
   }
 
   if (!document.body.classList.contains("in-room")) return;
-  if (target.closest("button, input, a, nav, .person, .sheet, .summary, .sess-card")) {
+  if (
+    target.closest(
+      "button, input, a, nav, .person, .sheet, .summary, .sess-card, .music-card",
+    )
+  ) {
     return;
   }
   setUiHidden(!document.body.classList.contains("ui-hidden"));
@@ -1594,6 +1765,7 @@ document.addEventListener("keydown", (event) => {
   else if (!sessCard.hidden) closeSessCard();
   else if (!joinList.hidden) closeJoinList();
   else if (!chatSheet.hidden) closeChat();
+  else if (!musicCard.hidden) closeMusic();
 });
 
 /* ---------- Wiring ---------- */
@@ -1647,6 +1819,15 @@ chatForm.addEventListener("submit", (event) => {
   if (!text || !room) return;
   chatInput.value = "";
   broadcast({ t: "chat", text });
+});
+
+musicToggle.addEventListener("click", () =>
+  musicCard.hidden ? openMusic() : closeMusic(),
+);
+$("musicClose").addEventListener("click", closeMusic);
+musicForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  playMusic(musicInput.value);
 });
 
 $("sumClose").addEventListener("click", hideSummary);
