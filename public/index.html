@@ -137,6 +137,7 @@
     <span class="sc-title" id="scTitle"></span>
   </div>
   <div class="sc-what" id="scWhat"></div>
+  <div class="sc-music" id="scMusic" hidden></div>
   <div class="sc-meta" id="scMeta"></div>
   <button class="sc-join" id="scJoin" type="button">Join session</button>
 </aside>
@@ -145,9 +146,14 @@
 <aside class="music-card" id="musicCard" role="dialog" aria-label="Music" hidden>
   <header class="sheet-head">
     <span>Music</span>
-    <button class="sheet-close" id="musicClose" type="button" aria-label="Close music and stop playing">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg>
-    </button>
+    <span class="mc-head-btns">
+      <button class="sheet-close" id="musicSphere" type="button" aria-pressed="false" aria-label="Show the video in the sphere">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3.6"/></svg>
+      </button>
+      <button class="sheet-close" id="musicClose" type="button" aria-label="Minimize music (it keeps playing)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9.5l6 6 6-6"/></svg>
+      </button>
+    </span>
   </header>
   <form class="chat-form" id="musicForm" autocomplete="off">
     <input id="musicInput" type="text" inputmode="url" maxlength="300" placeholder="Paste a YouTube link" aria-label="YouTube link">
@@ -155,9 +161,17 @@
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>
     </button>
   </form>
-  <div class="mc-stage" id="musicStage" hidden></div>
-  <p class="mc-note" id="musicNote" role="status">Plays through YouTube's own player. Closing this stops it.</p>
+  <div class="mc-slot" id="musicSlot" hidden></div>
+  <div class="mc-actions" id="musicActions" hidden>
+    <button class="mc-stop" id="musicStop" type="button">Stop</button>
+  </div>
+  <p class="mc-note" id="musicNote" role="status">Plays through YouTube's own player.</p>
 </aside>
+
+<!-- The player itself: one fixed layer that is never moved, so it keeps playing
+     while the card or the controls are minimized. It sits in the card's slot,
+     or as a soft-edged circle over the sphere. -->
+<div class="mc-stage" id="musicStage" hidden></div>
 
 <!-- Messages -->
 <section class="sheet" id="chatSheet" aria-label="Messages" hidden>

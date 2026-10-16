@@ -47,6 +47,14 @@ Setup in the [LINE Developers Console](https://developers.line.biz/console/):
 
 The server checks each LINE login with LINE before trusting the name and photo.
 
+## Music
+
+The note bubble in the room controls opens a card where you paste a YouTube link (video, playlist or Shorts).
+
+- **In a session** the music is shared. Whoever presses play starts it for everyone in that session, late joiners start part-way in, and "Stop for everyone" ends it. Sessions with music show "♪ title" in the join list and the session card. The state is kept in participant attributes (`music`), like the session itself, so the server stores nothing.
+- **Outside a session** it plays for you only.
+- **Minimizing** the card or the controls never interrupts it. YouTube doesn't allow hiding the picture to play only the sound, so with the card minimized the video stays visible as a soft-edged circle over the sphere. The circle button in the card shows it there on purpose.
+
 ## Adding rooms
 
 Add the room name to `ALLOWED_ROOMS` in `server.js`, and pass that name from the page.

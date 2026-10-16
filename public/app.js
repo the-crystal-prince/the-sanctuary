@@ -34,6 +34,11 @@ let nameLocked = false;
 let ytApi = null; // resolves once YouTube's player script has loaded
 let ytPlayer = null;
 let musicTicket = 0; // bumped on every stop, so a slow load can't start late
+let musicShared = false; // the music playing here is my session's music
+let musicPlayingT = 0; // start time of the shared music playing here
+let musicSphere = false; // show the video as a circle in the sphere
+let localMusic = null; // the music state I last published
+let lastMusicT = 0; // newest shared music state I have acted on
 
 // Everyone's clocks are lined up to the server's, so timers agree.
 let clockOffset = 0;
@@ -84,6 +89,10 @@ const musicCard = $("musicCard");
 const musicForm = $("musicForm");
 const musicInput = $("musicInput");
 const musicStage = $("musicStage");
+const musicSlot = $("musicSlot");
+const musicActions = $("musicActions");
+const musicStop = $("musicStop");
+const musicSphereBtn = $("musicSphere");
 const musicNote = $("musicNote");
 const chatSheet = $("chatSheet");
 const chatList = $("chatList");
@@ -554,7 +563,7 @@ function myMember() {
 // Every running session, oldest first, with who is in it.
 function getSessions() {
   const map = new Map();
-  const add = (info, member) => {
+  const add = (info, member, music) => {
     if (!info) return;
     let entry = map.get(info.id);
     if (!entry) {
@@ -562,16 +571,26 @@ function getSessions() {
       map.set(info.id, entry);
     }
     entry.members.push(member);
+    // The session's music is the newest state any member has published.
+    if (music && (!entry.music || music.t > entry.music.t)) entry.music = music;
   };
-  if (mySession) add(mySession, myMember());
+  if (mySession) {
+    const mine = localMusic && localMusic.sid === mySession.id ? localMusic : null;
+    add(mySession, myMember(), mine);
+  }
   if (room) {
     for (const participant of room.remoteParticipants.values()) {
-      add(parseSession(participant.attributes), {
-        identity: participant.identity,
-        name: participant.name || "Guest",
-        picture: pictureFromMetadata(participant),
-        isLocal: false,
-      });
+      const info = parseSession(participant.attributes);
+      add(
+        info,
+        {
+          identity: participant.identity,
+          name: participant.name || "Guest",
+          picture: pictureFromMetadata(participant),
+          isLocal: false,
+        },
+        info ? parseMusic(participant.attributes, info.id) : null,
+      );
     }
   }
   return [...map.values()].sort((a, b) => a.t - b.t);
@@ -736,6 +755,10 @@ function joinSession(session) {
 // Drops my session on this device (no card). Used when ending, switching or leaving.
 function teardownLocalSession() {
   mySession = null;
+  // The session's music ends for me with the session.
+  lastMusicT = 0;
+  localMusic = null;
+  if (musicShared) closeMusic();
   lastMembers = null;
   timeline = [];
   timelineList.replaceChildren();
@@ -826,6 +849,7 @@ function refreshSessions() {
   updateStateText(sessions, byId);
   applyRouting();
   refreshSessCard();
+  syncMusic(sessions);
 }
 
 function updateStateText(sessions, byId) {
@@ -891,6 +915,13 @@ function renderJoinList(sessions) {
       sub.textContent = subLine(session.t, session.members.length, session.k);
       text.append(name, sub);
 
+      if (session.music && !session.music.off) {
+        const music = document.createElement("span");
+        music.className = "jl-music";
+        music.textContent = "♪ " + (session.music.title || "Music playing");
+        text.append(music);
+      }
+
       const badge = document.createElement("span");
       badge.className = "jl-count";
       badge.textContent = String(session.members.length);
@@ -943,6 +974,11 @@ function fillSessCard(session) {
   sessCard.style.setProperty("--sc", rgbOf(session.c));
   $("scTitle").textContent = `${ownerName(session)}'s session`;
   $("scWhat").textContent = sessionLabel(session);
+  const playing = !!session.music && !session.music.off;
+  $("scMusic").hidden = !playing;
+  if (playing) {
+    $("scMusic").textContent = "♪ " + (session.music.title || "Music playing");
+  }
   const n = session.members.length;
   $("scMeta").textContent =
     `${formatTime(elapsedOf(session))} · ${n} meditating` +
@@ -1564,10 +1600,13 @@ async function initLine() {
 /* ---------- Music (YouTube) ---------- */
 
 // Plays a YouTube video or playlist through YouTube's own embedded player.
-// The player stays on screen while it plays (YouTube doesn't allow hiding the
-// picture to play only the sound), and closing the card stops the music.
+// In a session the music is shared, so everyone in it hears the same thing.
+// The player is one fixed layer that is never moved in the page, so minimizing
+// the card or the controls can't interrupt it. YouTube doesn't allow hiding the
+// picture to play only the sound, so with the card minimized the video stays
+// visible as a soft-edged circle in the sphere.
 
-const MUSIC_NOTE = "Plays through YouTube's own player. Closing this stops it.";
+const MUSIC_NOTE = "Plays through YouTube's own player.";
 
 function loadYouTubeApi() {
   if (ytApi) return ytApi;
@@ -1625,6 +1664,65 @@ function parseYouTube(text) {
   return video || list ? { video, list } : null;
 }
 
+// The one place that decides where the player sits: in the card's slot, or as a
+// soft circle over the sphere (when asked for, or when the card is minimized).
+function layoutStage() {
+  if (musicStage.hidden) return;
+  const sphere = musicSphere || musicCard.hidden;
+  musicStage.classList.toggle("sphere", sphere);
+  musicSlot.hidden = sphere;
+
+  let box;
+  if (sphere) {
+    const orb = document.querySelector(".orb-wrap").getBoundingClientRect();
+    // YouTube asks for a player at least 200 px across, so the circle is never smaller.
+    const size = Math.min(
+      Math.max(210, Math.round(orb.width * 1.6)),
+      window.innerWidth - 24,
+    );
+    box = {
+      left: Math.min(
+        Math.max(orb.left + orb.width / 2 - size / 2, 12),
+        window.innerWidth - size - 12,
+      ),
+      top: Math.min(
+        Math.max(orb.top + orb.height / 2 - size / 2, 12),
+        window.innerHeight - size - 12,
+      ),
+      width: size,
+      height: size,
+    };
+  } else {
+    box = musicSlot.getBoundingClientRect();
+  }
+
+  musicStage.style.left = box.left + "px";
+  musicStage.style.top = box.top + "px";
+  musicStage.style.width = box.width + "px";
+  musicStage.style.height = box.height + "px";
+}
+
+function showStage() {
+  const wasHidden = musicStage.hidden;
+  musicStage.hidden = false;
+  if (wasHidden) {
+    // Appear in place instead of gliding in from the corner.
+    musicStage.classList.add("fresh");
+    layoutStage();
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => musicStage.classList.remove("fresh")),
+    );
+  } else {
+    layoutStage();
+  }
+}
+
+function refreshMusicActions() {
+  musicActions.hidden = !ytPlayer;
+  musicStop.textContent = musicShared ? "Stop for everyone" : "Stop";
+}
+
+// Stops the sound and clears the player. Doesn't touch the card.
 function stopMusic() {
   musicTicket++;
   if (ytPlayer) {
@@ -1637,7 +1735,11 @@ function stopMusic() {
   }
   musicStage.replaceChildren();
   musicStage.hidden = true;
+  musicSlot.hidden = true;
   musicToggle.classList.remove("playing");
+  musicShared = false;
+  musicPlayingT = 0;
+  refreshMusicActions();
 }
 
 function openMusic() {
@@ -1650,8 +1752,17 @@ function openMusic() {
       // remembering the last link is optional
     }
   }
+  layoutStage();
 }
 
+// Tucks the card away. The music carries on, and its picture moves into the sphere.
+function minimizeMusic() {
+  musicCard.hidden = true;
+  musicToggle.setAttribute("aria-expanded", "false");
+  layoutStage();
+}
+
+// Stops everything for me and hides the card (used when leaving the room or session).
 function closeMusic() {
   stopMusic();
   musicCard.hidden = true;
@@ -1659,19 +1770,103 @@ function closeMusic() {
   musicNote.textContent = MUSIC_NOTE;
 }
 
-async function playMusic(source) {
-  const found = parseYouTube(source);
-  if (!found) {
-    musicNote.textContent = "That doesn't look like a YouTube link.";
+function toggleSphere() {
+  musicSphere = !musicSphere;
+  musicSphereBtn.setAttribute("aria-pressed", String(musicSphere));
+  layoutStage();
+}
+
+/* Shared music: it lives in participant attributes, like the session itself.
+   Whoever presses play publishes {session, link, start time}. Everyone in that
+   session follows the newest state (stop is a state too) and joins part-way in. */
+
+function parseMusic(attrs, sid) {
+  if (!attrs || !attrs.music) return null;
+  try {
+    const data = JSON.parse(attrs.music);
+    const t = Number(data.t);
+    if (!Number.isFinite(t) || String(data.sid) !== sid) return null;
+    const video = /^[\w-]{11}$/.test(data.v || "") ? data.v : null;
+    const list = /^[\w-]+$/.test(data.l || "") ? data.l : null;
+    const off = !!data.off;
+    if (!off && !video && !list) return null;
+    return {
+      sid,
+      t,
+      video,
+      list,
+      off,
+      title: clean(String(data.n || ""), 80),
+      by: clean(String(data.by || ""), 50),
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function publishMusic(state) {
+  localMusic = state;
+  if (room) {
+    try {
+      await room.localParticipant.setAttributes({
+        music: JSON.stringify({
+          sid: state.sid,
+          v: state.video || "",
+          l: state.list || "",
+          t: state.t,
+          n: state.title || "",
+          by: state.by || "",
+          off: state.off ? 1 : 0,
+        }),
+      });
+    } catch (error) {
+      console.error("Could not share the music:", error);
+    }
+  }
+  refreshSessions();
+}
+
+// Called whenever people or their attributes change: follow the session's newest music.
+function syncMusic(sessions) {
+  if (!mySession) return;
+  const mine = sessions.find((s) => s.id === mySession.id);
+  const state = mine && mine.music;
+  if (!state || state.t <= lastMusicT) return; // nothing new (title updates keep the same t)
+  lastMusicT = state.t;
+
+  if (state.off) {
+    if (musicShared) {
+      stopMusic();
+      musicNote.textContent = "The music was stopped.";
+    }
     return;
   }
+  playTrack({ video: state.video, list: state.list }, true, state.t);
+}
 
+function noteTitle() {
+  let title = "";
   try {
-    localStorage.setItem("sanctuaryMusic", String(source).trim());
+    title = clean(String(ytPlayer.getVideoData().title || ""), 80);
   } catch (error) {
-    // remembering the last link is optional
+    return;
   }
+  if (!title) return;
+  musicNote.textContent = "♪ " + title;
 
+  // Whoever started shared music tells everyone what it's called.
+  if (
+    musicShared &&
+    localMusic &&
+    localMusic.t === musicPlayingT &&
+    !localMusic.off &&
+    !localMusic.title
+  ) {
+    publishMusic({ ...localMusic, title });
+  }
+}
+
+async function playTrack(found, shared, t) {
   stopMusic();
   const ticket = musicTicket;
   musicNote.textContent = "Loading…";
@@ -1683,16 +1878,23 @@ async function playMusic(source) {
     musicNote.textContent = error.message;
     return;
   }
-  if (ticket !== musicTicket) return; // closed or replaced while loading
+  if (ticket !== musicTicket) return; // stopped or replaced while loading
+
+  musicShared = shared;
+  musicPlayingT = shared ? t : 0;
 
   const target = document.createElement("div");
   musicStage.append(target);
-  musicStage.hidden = false;
+  showStage();
 
   const playerVars = { autoplay: 1, playsinline: 1, rel: 0 };
   if (found.list) {
     playerVars.list = found.list;
     if (!found.video) playerVars.listType = "playlist";
+  } else if (shared) {
+    // Join in where everyone else is.
+    const behind = Math.floor((syncedNow() - t) / 1000);
+    if (behind > 0) playerVars.start = behind;
   }
 
   ytPlayer = new YT.Player(target, {
@@ -1706,6 +1908,9 @@ async function playMusic(source) {
         musicToggle.classList.add("playing");
         musicNote.textContent = MUSIC_NOTE;
       },
+      onStateChange: (event) => {
+        if (event.data === 1) noteTitle(); // 1 = playing
+      },
       onAutoplayBlocked: () => {
         musicNote.textContent = "Tap the video to start the music.";
       },
@@ -1715,6 +1920,58 @@ async function playMusic(source) {
       },
     },
   });
+  refreshMusicActions();
+}
+
+// The Play button: in a session it plays for everyone in it, otherwise just for me.
+async function playMusic(source) {
+  const found = parseYouTube(source);
+  if (!found) {
+    musicNote.textContent = "That doesn't look like a YouTube link.";
+    return;
+  }
+
+  try {
+    localStorage.setItem("sanctuaryMusic", String(source).trim());
+  } catch (error) {
+    // remembering the last link is optional
+  }
+
+  if (mySession) {
+    const state = {
+      sid: mySession.id,
+      video: found.video,
+      list: found.list,
+      t: syncedNow(),
+      title: "",
+      by: myMember().name,
+      off: false,
+    };
+    lastMusicT = state.t;
+    publishMusic(state); // not awaited: playback shouldn't wait for it
+    await playTrack(found, true, state.t);
+  } else {
+    await playTrack(found, false, 0);
+  }
+}
+
+// Stop: for everyone if the music is the session's, otherwise just for me.
+function stopPressed() {
+  if (musicShared && mySession) {
+    const state = {
+      sid: mySession.id,
+      video: null,
+      list: null,
+      t: syncedNow(),
+      title: "",
+      by: myMember().name,
+      off: true,
+    };
+    lastMusicT = state.t;
+    publishMusic(state);
+  }
+  stopMusic();
+  musicNote.textContent = MUSIC_NOTE;
 }
 
 /* ---------- Bubbles and the quiet view ---------- */
@@ -1751,7 +2008,7 @@ document.addEventListener("click", (event) => {
   if (!document.body.classList.contains("in-room")) return;
   if (
     target.closest(
-      "button, input, a, nav, .person, .sheet, .summary, .sess-card, .music-card",
+      "button, input, a, nav, .person, .sheet, .summary, .sess-card, .music-card, .mc-stage",
     )
   ) {
     return;
@@ -1765,7 +2022,7 @@ document.addEventListener("keydown", (event) => {
   else if (!sessCard.hidden) closeSessCard();
   else if (!joinList.hidden) closeJoinList();
   else if (!chatSheet.hidden) closeChat();
-  else if (!musicCard.hidden) closeMusic();
+  else if (!musicCard.hidden) minimizeMusic();
 });
 
 /* ---------- Wiring ---------- */
@@ -1822,13 +2079,23 @@ chatForm.addEventListener("submit", (event) => {
 });
 
 musicToggle.addEventListener("click", () =>
-  musicCard.hidden ? openMusic() : closeMusic(),
+  musicCard.hidden ? openMusic() : minimizeMusic(),
 );
-$("musicClose").addEventListener("click", closeMusic);
+$("musicClose").addEventListener("click", minimizeMusic);
+musicSphereBtn.addEventListener("click", toggleSphere);
+musicStop.addEventListener("click", stopPressed);
 musicForm.addEventListener("submit", (event) => {
   event.preventDefault();
   playMusic(musicInput.value);
 });
+
+// Keep the player lined up with its slot or the sphere as the page changes size.
+window.addEventListener("resize", layoutStage);
+if (window.ResizeObserver) {
+  const watcher = new ResizeObserver(layoutStage);
+  watcher.observe(musicCard);
+  watcher.observe(document.querySelector(".orb-wrap"));
+}
 
 $("sumClose").addEventListener("click", hideSummary);
 sumShare.addEventListener("click", shareCard);

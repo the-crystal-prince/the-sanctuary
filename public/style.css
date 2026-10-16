@@ -993,26 +993,104 @@ body.ui-hidden .people {
   padding: 10px 14px;
 }
 
-/* YouTube asks for a player at least 200 x 200, and for it to stay visible. */
-.mc-stage {
-  margin: 0 12px;
-  height: 200px;
-  border-radius: 14px;
-  overflow: hidden;
-  background: #000;
+.mc-head-btns {
+  display: flex;
+  align-items: center;
 }
 
-.mc-stage iframe {
-  display: block;
-  width: 100%;
-  height: 100%;
-  border: 0;
+.sheet-close[aria-pressed="true"] {
+  color: var(--on);
+}
+
+/* Reserves the space the player takes inside the card. YouTube asks for a
+   player at least 200 x 200 that stays visible. */
+.mc-slot {
+  margin: 0 12px;
+  height: 200px;
+}
+
+.mc-actions {
+  display: flex;
+  margin: 8px 12px 0;
+}
+
+.mc-stop {
+  flex: 1;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--rim);
+  background: rgba(18, 24, 38, 0.7);
+  color: var(--mist);
+  font-size: 13px;
 }
 
 .mc-note {
   margin: 8px 16px 0;
   font-size: 12px;
   color: var(--dim);
+}
+
+/* The player: placed by script over the card's slot, or over the sphere. */
+.mc-stage {
+  position: fixed;
+  z-index: 6;
+  overflow: hidden;
+  border-radius: 14px;
+  background: #000;
+  transition:
+    left 0.5s var(--ease),
+    top 0.5s var(--ease),
+    width 0.5s var(--ease),
+    height 0.5s var(--ease),
+    border-radius 0.5s var(--ease);
+}
+
+.mc-stage.fresh {
+  transition: none;
+}
+
+.mc-stage iframe {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+/* Sphere view: a round cut-out whose edges fade softly into the dark. */
+.mc-stage.sphere {
+  z-index: 2;
+  border-radius: 50%;
+  background: transparent;
+  -webkit-mask-image: radial-gradient(circle closest-side, #000 54%, rgba(0, 0, 0, 0) 100%);
+  mask-image: radial-gradient(circle closest-side, #000 54%, rgba(0, 0, 0, 0) 100%);
+}
+
+/* Fill the circle: the 16:9 picture is scaled up to cover the square. */
+.mc-stage.sphere iframe {
+  inset: auto;
+  left: 50%;
+  top: 50%;
+  width: 178%;
+  height: 100%;
+  transform: translate(-50%, -50%);
+}
+
+/* Which sessions have music on, in the join list and the session card. */
+.jl-music,
+.sc-music {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: rgb(var(--sc, 170, 195, 255));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sc-music {
+  margin-top: 4px;
 }
 
 /* ---------- Messages ---------- */
