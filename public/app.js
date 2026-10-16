@@ -1488,6 +1488,23 @@ async function toggleCamera() {
 
 /* ---------- LINE login (LIFF) ---------- */
 
+// Tells the LINE chat that someone entered, so the bot can answer with its
+// "has joined The Sanctuary!" card. The bot looks for these words in the text.
+// Needs the "chat_message.write" scope, and only works when the page is opened
+// from inside a LINE chat. Sent once per visit; failures are ignored.
+const ENTRY_TEXT = "🕊️ Entering The Sanctuary";
+
+async function announceEntry() {
+  try {
+    if (!liffReady || !liff.isInClient()) return;
+    if (sessionStorage.getItem("sanctuaryAnnounced")) return;
+    await liff.sendMessages([{ type: "text", text: ENTRY_TEXT }]);
+    sessionStorage.setItem("sanctuaryAnnounced", "1");
+  } catch (error) {
+    console.error("Could not announce entry:", error);
+  }
+}
+
 async function initLine() {
   try {
     const response = await fetch("/config");
@@ -1518,6 +1535,7 @@ async function initLine() {
         lineProfile.pictureUrl,
       );
       message.textContent = "Tap Join to enter the room.";
+      announceEntry();
     } else {
       lineStatus.textContent = "Join as a guest, or sign in with LINE.";
       lineLogin.hidden = false;
