@@ -39,8 +39,7 @@
 
     <div class="timer">
       <div id="clock" role="timer">00:00</div>
-      <div id="timerState" class="ui">Join the room to begin together</div>
-      <button class="session-btn ui" id="session" type="button" disabled data-state="ready">Begin together</button>
+      <div id="timerState" class="ui">Join the room to meditate together</div>
     </div>
 
     <ol class="timeline ui" id="timeline" aria-label="Session timeline" hidden></ol>
@@ -83,6 +82,28 @@
   </div>
 </nav>
 
+<!-- Dock: the bottom-centre bubbles for starting or joining a meditation. -->
+<nav class="dock ui" id="dock" data-mode="hidden" aria-label="Meditation">
+  <div class="join-list" id="joinList" role="menu" hidden></div>
+  <button class="bubble dock-btn" id="dockMeditate" type="button" aria-label="Meditate">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9.2"/><path d="M7.7 10.4q1.5 1.6 3 0M13.3 10.4q1.5 1.6 3 0"/><path d="M8.6 14.4q3.4 3 6.8 0"/></svg>
+    <span class="key-lbl">Meditate</span>
+  </button>
+  <button class="bubble dock-btn" id="dockStart" type="button" aria-label="Start a session">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9.2"/><path d="M12 7.5v9M7.5 12h9"/></svg>
+    <span class="key-lbl">Start</span>
+  </button>
+  <button class="bubble dock-btn" id="dockJoin" type="button" aria-label="Join a session" aria-expanded="false" aria-haspopup="menu">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="12" r="5.4"/><circle cx="15.6" cy="12" r="5.4"/></svg>
+    <span class="badge" id="joinBadge">1</span>
+    <span class="key-lbl">Join</span>
+  </button>
+  <button class="bubble dock-btn end" id="dockEnd" type="button" aria-label="End my meditation">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2.4"/></svg>
+    <span class="key-lbl">End</span>
+  </button>
+</nav>
+
 <!-- Room controls: round bubbles in the lower right that stack into one handle. -->
 <nav class="controls ui" id="controls" aria-label="Room controls">
   <div class="rail-buttons" id="railButtons">
@@ -105,6 +126,17 @@
     <svg class="i-bubbles" viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="15.5" r="3.6"/><circle cx="16.2" cy="12" r="2.6"/><circle cx="12.4" cy="6.6" r="1.8"/></svg>
   </button>
 </nav>
+
+<!-- A small clear-glass card about the session someone is in. -->
+<aside class="sess-card" id="sessCard" role="dialog" aria-label="Session" hidden>
+  <div class="sc-head">
+    <span class="sc-dot" id="scDot"></span>
+    <span class="sc-title" id="scTitle"></span>
+  </div>
+  <div class="sc-what" id="scWhat"></div>
+  <div class="sc-meta" id="scMeta"></div>
+  <button class="sc-join" id="scJoin" type="button">Join session</button>
+</aside>
 
 <!-- Messages -->
 <section class="sheet" id="chatSheet" aria-label="Messages" hidden>
@@ -131,10 +163,19 @@
   <div class="summary-card">
     <div class="sum-emoji" aria-hidden="true">🙏✨</div>
     <h2 id="sumTitle">We meditated 30 minutes!</h2>
+    <div class="sum-together" id="sumTogether" hidden>
+      <div class="sum-with">Meditated together</div>
+      <ul class="sum-faces" id="sumFaces"></ul>
+    </div>
     <p class="sum-sadhu">Sadhuuu</p>
     <p class="sum-boon">The Boon is Yours!</p>
     <ol class="timeline full" id="sumTimeline"></ol>
-    <button class="join-button sum-close" id="sumClose" type="button">Close</button>
+    <img class="sum-img" id="sumImg" alt="Your meditation card" hidden>
+    <p class="sum-hint" id="sumHint" hidden>Press and hold the card to save it.</p>
+    <div class="sum-actions">
+      <button class="sum-share" id="sumShare" type="button">Share card</button>
+      <button class="join-button sum-close" id="sumClose" type="button">Close</button>
+    </div>
   </div>
 </section>
 

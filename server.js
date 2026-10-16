@@ -25,6 +25,13 @@ app.get("/health", (req, res) => {
   res.json({ ok: true });
 });
 
+// The server's clock, so every phone can line its timer up with everyone else's
+// even when their own clocks are a little off.
+app.get("/time", (req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json({ now: Date.now() });
+});
+
 // Tells the page whether LINE login is set up.
 app.get("/config", (req, res) => {
   res.json({ liffId: LIFF_ID || null });
@@ -117,7 +124,8 @@ app.post("/get-token", async (req, res) => {
       roomJoin: true,
       room: roomName.trim(),
       canPublish: true,
-      canPublishData: true, // chat, blessings and the shared timer
+      canPublishData: true, // chat and blessings
+      canUpdateOwnMetadata: true, // lets each person share which session they are in
       canSubscribe: true,
     });
 

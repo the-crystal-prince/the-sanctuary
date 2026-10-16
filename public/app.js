@@ -11,19 +11,39 @@ const FLOAT_MS = 7000;
 const ACTION_COOLDOWN_MS = 2500;
 const MAX_TIMELINE = 120;
 
+// Each session gets one of these. The first is a gentle red.
+const PALETTE = [
+  "255,107,107", // red
+  "255,184,77", // amber
+  "92,214,140", // green
+  "77,208,225", // teal
+  "176,140,255", // violet
+  "108,160,255", // blue
+];
+const DEFAULT_ME = "170,195,255";
+
 let room = null;
 let connecting = false;
 let micEnabled = false;
 let cameraEnabled = false;
 let liffReady = false;
+let liffId = null;
 let lineProfile = null; // { displayName, pictureUrl } when signed in with LINE
 let idToken = null; // sent to the server so it can verify who you are
 let nameLocked = false;
 
-// One meditation, shared by everyone in the room.
-const session = { running: false, startedAt: 0, final: 0 };
+// Everyone's clocks are lined up to the server's, so timers agree.
+let clockOffset = 0;
+const syncedNow = () => Date.now() + clockOffset;
+
+// The meditation I am in, if any. Others see it through my participant attributes.
+let mySession = null; // { id, c, t, k, by, title, joinedAt }
 let timeline = [];
+let together = new Map(); // identity -> { name, picture }
+let lastMembers = null; // identity -> member, to notice who joins and leaves
+let lastSummary = null;
 let tick = null;
+let cardSid = null; // session shown in the glass card
 
 const $ = (id) => document.getElementById(id);
 const video = $("localVideo");
@@ -40,7 +60,6 @@ const cameraButton = $("camera");
 const chatToggle = $("chatToggle");
 const chatDot = $("chatDot");
 const leaveButton = $("leave");
-const sessionButton = $("session");
 const people = $("people");
 const clock = $("clock");
 const timerState = $("timerState");
@@ -52,6 +71,11 @@ const controls = $("controls");
 const railToggle = $("railToggle");
 const actions = $("actions");
 const actionsToggle = $("actionsToggle");
+const dock = $("dock");
+const dockJoin = $("dockJoin");
+const joinBadge = $("joinBadge");
+const joinList = $("joinList");
+const sessCard = $("sessCard");
 const chatSheet = $("chatSheet");
 const chatList = $("chatList");
 const chatForm = $("chatForm");
@@ -61,6 +85,7 @@ const toast = $("toast");
 const summary = $("summary");
 const sumTitle = $("sumTitle");
 const sumTimeline = $("sumTimeline");
+const sumShare = $("sumShare");
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -90,6 +115,13 @@ function formatTime(total) {
 
 function randomId() {
   return Math.random().toString(36).slice(2, 10);
+}
+
+const rgbOf = (c) => PALETTE[Math.abs(Number(c) || 0) % PALETTE.length];
+
+// Only LINE profile pictures are ever loaded.
+function isLinePicture(url) {
+  return typeof url === "string" && url.startsWith("https://profile.line-scdn.net/");
 }
 
 /* ---------- Camera and mic icons: green when on, red when off ---------- */
@@ -152,20 +184,15 @@ function setControls(connected) {
     // Leaving the room always brings the interface back.
     document.body.classList.remove("ui-hidden");
     closeChat();
+    closeSessCard();
+    closeJoinList();
     setActionsOpen(false);
   }
-  updateSessionUi();
+  refreshSessions();
 }
 
-// Only LINE profile pictures are shown.
 function setAvatarPhoto(avatar, url) {
-  if (
-    !url ||
-    typeof url !== "string" ||
-    !url.startsWith("https://profile.line-scdn.net/")
-  ) {
-    return;
-  }
+  if (!isLinePicture(url)) return;
   if (avatar.querySelector(".avatar-photo")) return;
 
   const photo = document.createElement("img");
@@ -289,7 +316,7 @@ function clearRemote() {
     .forEach((element) => element.remove());
 }
 
-/* ---------- Shared messages (LiveKit data channel) ---------- */
+/* ---------- Shared messages (LiveKit data channel): chat and blessings ---------- */
 
 function send(msg, destinationIdentities) {
   if (!room) return;
@@ -327,73 +354,14 @@ function handleMessage(msg, from, isLocal) {
       if (text) addChat({ name, text, mine: isLocal });
       break;
     }
-    case "start":
-      if (!session.running) startSession(0);
-      break;
-    case "end": {
-      const elapsed = Number(msg.elapsed);
-      if (session.running) {
-        endSession(
-          Number.isFinite(elapsed) ? Math.min(Math.max(elapsed, 0), 86400) : elapsedNow(),
-        );
-      }
-      break;
-    }
     case "action":
-      if (ACTIONS[msg.kind]) doAction(msg.kind, from, isLocal);
-      break;
-    case "hello":
-      // A newcomer asks for the session so far. One person answers.
-      if (!isLocal && session.running && isResponderFor(from)) {
-        send(
-          {
-            t: "state",
-            elapsed: elapsedNow(),
-            timeline: timeline.slice(-MAX_TIMELINE),
-          },
-          [from.identity],
-        );
+      // Blessings are for the people in the same session.
+      if (ACTIONS[msg.kind] && mySession && msg.sid === mySession.id) {
+        doAction(msg.kind, from, isLocal);
       }
-      break;
-    case "state":
-      if (!isLocal && !session.running) adoptState(msg);
       break;
     default:
   }
-}
-
-// The person whose identity sorts first answers a newcomer, so they get one reply.
-function isResponderFor(newcomer) {
-  if (!room) return false;
-  const ids = [room.localParticipant.identity];
-  for (const participant of room.remoteParticipants.values()) {
-    if (participant.identity !== newcomer.identity) ids.push(participant.identity);
-  }
-  ids.sort();
-  return ids[0] === room.localParticipant.identity;
-}
-
-function adoptState(msg) {
-  const elapsed = Number(msg.elapsed);
-  if (!Number.isFinite(elapsed) || elapsed < 0 || elapsed > 86400) return;
-
-  const entries = [];
-  if (Array.isArray(msg.timeline)) {
-    for (const item of msg.timeline.slice(-MAX_TIMELINE)) {
-      if (!item || typeof item !== "object") continue;
-      const text = clean(item.text, 120);
-      const at = Number(item.at);
-      if (!text || !Number.isFinite(at)) continue;
-      entries.push({
-        id: clean(String(item.id || randomId()), 24),
-        at,
-        text,
-        kind: KINDS.has(item.kind) ? item.kind : "quiet",
-      });
-    }
-  }
-
-  startSession(elapsed, entries);
 }
 
 /* ---------- Chat ---------- */
@@ -459,9 +427,7 @@ function closeChat() {
   chatSheet.hidden = true;
 }
 
-/* ---------- Action keys: Metta, Boon, Rejoice ---------- */
-
-const KINDS = new Set(["start", "end", "metta", "boon", "rejoice", "quiet"]);
+/* ---------- Action keys: Metta, Boon, Rejoice (for your session) ---------- */
 
 const ACTIONS = {
   metta: { did: "shared Metta", text: "May all living beings be happy" },
@@ -482,11 +448,13 @@ function setActionsOpen(open) {
 }
 
 function sendAction(kind) {
-  if (!room) return;
+  if (!room || !mySession) return;
   const now = Date.now();
   if (now - (lastSent[kind] || 0) < ACTION_COOLDOWN_MS) return;
   lastSent[kind] = now;
-  broadcast({ t: "action", kind });
+  broadcast({ t: "action", kind, sid: mySession.id });
+  // The keys tuck back into the lotus so the dock (and End) comes back.
+  setTimeout(() => setActionsOpen(false), 700);
 }
 
 function floatText(kind, text, x, y) {
@@ -533,15 +501,117 @@ function doAction(kind, from, isLocal) {
     floatText(kind, action.text, x, y);
   }
 
-  if (session.running) addTimeline(`${name} ${action.did}`, kind);
+  addTimeline(`${name} ${action.did}`, kind);
 }
 
-/* ---------- The session: one meditation for everyone ---------- */
+/* ---------- Sessions: each person's own meditation, visible to everyone ---------- */
 
-function elapsedNow() {
-  return session.running
-    ? Math.max(0, Math.floor((Date.now() - session.startedAt) / 1000))
-    : session.final;
+// A session lives in its members' participant attributes, so anyone arriving
+// later sees it straight away and nothing has to be stored on the server.
+function parseSession(attrs) {
+  if (!attrs || !attrs.sid || !attrs.sdata) return null;
+  try {
+    const data = JSON.parse(attrs.sdata);
+    const t = Number(data.t);
+    if (!Number.isFinite(t)) return null;
+    return {
+      id: clean(String(attrs.sid), 24),
+      c: Number.isInteger(data.c) ? data.c : 0,
+      t,
+      k: clean(String(data.k || "timer"), 12),
+      by: clean(String(data.by || ""), 50),
+      title: clean(String(data.title || ""), 80),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function elapsedOf(session) {
+  return Math.max(0, Math.floor((syncedNow() - session.t) / 1000));
+}
+
+function myMember() {
+  return {
+    identity: room ? room.localParticipant.identity : "me",
+    name: (room && room.localParticipant.name) || nameInput.value.trim() || "You",
+    picture: lineProfile ? lineProfile.pictureUrl : null,
+    isLocal: true,
+  };
+}
+
+// Every running session, oldest first, with who is in it.
+function getSessions() {
+  const map = new Map();
+  const add = (info, member) => {
+    if (!info) return;
+    let entry = map.get(info.id);
+    if (!entry) {
+      entry = { ...info, members: [] };
+      map.set(info.id, entry);
+    }
+    entry.members.push(member);
+  };
+  if (mySession) add(mySession, myMember());
+  if (room) {
+    for (const participant of room.remoteParticipants.values()) {
+      add(parseSession(participant.attributes), {
+        identity: participant.identity,
+        name: participant.name || "Guest",
+        picture: pictureFromMetadata(participant),
+        isLocal: false,
+      });
+    }
+  }
+  return [...map.values()].sort((a, b) => a.t - b.t);
+}
+
+function pickColor() {
+  const used = new Set(getSessions().map((s) => s.c % PALETTE.length));
+  for (let i = 0; i < PALETTE.length; i++) if (!used.has(i)) return i;
+  return getSessions().length % PALETTE.length;
+}
+
+async function publishSession(session) {
+  if (!room) return;
+  const attrs = session
+    ? {
+        sid: session.id,
+        sdata: JSON.stringify({
+          c: session.c,
+          t: session.t,
+          k: session.k,
+          by: session.by,
+          title: session.title || "",
+        }),
+      }
+    : { sid: "", sdata: "" };
+  await room.localParticipant.setAttributes(attrs);
+}
+
+function sessionLabel(session) {
+  if (session.k === "timer") return "Timer only";
+  return session.title ? `Listening to ${session.title}` : "Guided session";
+}
+
+function ownerName(session) {
+  return session.by || "Someone";
+}
+
+function addTimeline(text, kind, at) {
+  if (!mySession) return;
+  const entry = {
+    id: randomId(),
+    at: at === undefined ? elapsedOf(mySession) : at,
+    text,
+    kind,
+  };
+  timeline.push(entry);
+  if (timeline.length > MAX_TIMELINE) timeline.shift();
+
+  timelineList.hidden = false;
+  timelineList.append(makeTimelineItem(entry));
+  while (timelineList.children.length > 4) timelineList.firstChild.remove();
 }
 
 function makeTimelineItem(entry) {
@@ -557,119 +627,613 @@ function makeTimelineItem(entry) {
   return item;
 }
 
-function renderTimeline() {
-  timelineList.hidden = timeline.length === 0;
-  timelineList.replaceChildren(
-    ...timeline.slice(-4).map((entry) => makeTimelineItem(entry)),
-  );
-}
-
-function addTimeline(text, kind, at = elapsedNow()) {
-  const entry = { id: randomId(), at, text, kind };
-  timeline.push(entry);
-  if (timeline.length > MAX_TIMELINE) timeline.shift();
-
-  timelineList.hidden = false;
-  timelineList.append(makeTimelineItem(entry));
-  while (timelineList.children.length > 4) timelineList.firstChild.remove();
+function setOrb(active, progress) {
+  if (!window.sanctuaryOrb) return;
+  window.sanctuaryOrb.setActive(active);
+  if (progress !== undefined) window.sanctuaryOrb.setProgress(progress);
 }
 
 function renderClock() {
-  const t = elapsedNow();
+  if (!mySession) return;
+  const t = elapsedOf(mySession);
   clock.textContent = formatTime(t);
   // The liquid in the moon rises slowly as the meditation goes on.
-  if (session.running && window.sanctuaryOrb) {
+  if (window.sanctuaryOrb) {
     window.sanctuaryOrb.setProgress(1 - Math.exp(-t / 1500));
   }
 }
 
-function updateSessionUi() {
-  const connected = !!room;
-  sessionButton.disabled = !connected;
-  sessionButton.dataset.state = session.running ? "running" : "ready";
-  sessionButton.textContent = session.running ? "End meditation" : "Begin together";
-
-  if (!connected) {
-    timerState.textContent = "Join the room to begin together";
-  } else if (session.running) {
-    timerState.textContent = "A quiet moment together";
-  } else if (session.final > 0) {
-    timerState.textContent = "Session complete";
-  } else {
-    timerState.textContent = "Ready when you are";
-  }
-
-  clock.textContent = formatTime(elapsedNow());
-  if (window.sanctuaryOrb) window.sanctuaryOrb.setActive(session.running);
-}
-
-function startSession(elapsed, entries) {
-  clearInterval(tick);
-  hideSummary();
-  session.running = true;
-  session.startedAt = Date.now() - elapsed * 1000;
-  session.final = 0;
-
-  if (entries) {
-    timeline = entries;
-    renderTimeline();
-  } else {
-    timeline = [];
-    timelineList.replaceChildren();
-    addTimeline("Meditation began", "start", 0);
-  }
-
-  if (window.sanctuaryOrb) window.sanctuaryOrb.setProgress(0);
+// Runs twice a second while you are in the room: the clock and any open lists.
+function secondTick() {
   renderClock();
-  updateSessionUi();
-  tick = setInterval(renderClock, 250);
+  if (!joinList.hidden) {
+    joinList.querySelectorAll(".jl-sub").forEach((el) => {
+      el.textContent = subLine(Number(el.dataset.t), Number(el.dataset.n), el.dataset.k);
+    });
+  }
+  if (!sessCard.hidden) refreshSessCard();
 }
 
-function endSession(elapsed) {
-  clearInterval(tick);
-  session.running = false;
-  session.final = Math.max(1, Math.round(elapsed));
-  addTimeline("Meditation ended", "end", session.final);
+function subLine(t, n, kind) {
+  const label = kind === "timer" ? "Timer only" : "Guided";
+  const time = formatTime(Math.max(0, (syncedNow() - t) / 1000));
+  return `${time} · ${label} · ${n} ${n === 1 ? "person" : "people"}`;
+}
+
+// Start a meditation of my own, or join one that is already running.
+async function enterSession(session, starting) {
+  if (!room) return;
+  if (mySession && mySession.id === session.id) return;
+  if (mySession) teardownLocalSession(); // switching: leave the old one quietly
+
+  closeJoinList();
+  closeSessCard();
+
+  mySession = { ...session, joinedAt: syncedNow() };
+  together = new Map([[myMember().identity, myMember()]]);
+  lastMembers = null;
+  timeline = [];
+  timelineList.replaceChildren();
+  addTimeline("Meditation began", "start", 0);
+  if (!starting) addTimeline("You joined", "quiet", elapsedOf(mySession));
+
+  document.body.style.setProperty("--me", rgbOf(session.c));
+  setOrb(true, 0);
   renderClock();
-  updateSessionUi();
-  showSummary(session.final);
+  message.textContent = "You'll hear the people in this session, and they'll hear you.";
+  refreshSessions();
+
+  try {
+    await publishSession(session);
+  } catch (error) {
+    console.error(error);
+    teardownLocalSession();
+    message.textContent = "Couldn't start the session. Please try again.";
+    refreshSessions();
+  }
 }
 
-// Leaving the room drops the session on this device without a summary.
-function resetSession() {
-  clearInterval(tick);
-  session.running = false;
-  session.final = 0;
+function startSession() {
+  if (!room || mySession) return;
+  enterSession(
+    {
+      id: randomId() + randomId().slice(0, 4),
+      c: pickColor(),
+      t: syncedNow(),
+      k: "timer",
+      by: myMember().name,
+      title: "",
+    },
+    true,
+  );
+}
+
+function joinSession(session) {
+  enterSession(
+    {
+      id: session.id,
+      c: session.c,
+      t: session.t,
+      k: session.k,
+      by: session.by,
+      title: session.title,
+    },
+    false,
+  );
+}
+
+// Drops my session on this device (no card). Used when ending, switching or leaving.
+function teardownLocalSession() {
+  mySession = null;
+  lastMembers = null;
   timeline = [];
   timelineList.replaceChildren();
   timelineList.hidden = true;
-  hideSummary();
-  if (window.sanctuaryOrb) window.sanctuaryOrb.setProgress(0);
-  updateSessionUi();
+  document.body.style.setProperty("--me", DEFAULT_ME);
+  document.body.classList.remove("in-session");
+  setActionsOpen(false);
+  setOrb(false, 0);
 }
 
-function showSummary(seconds) {
-  const minutes = Math.round(seconds / 60);
-  sumTitle.textContent =
-    minutes < 1
-      ? "We sat together for a moment!"
-      : `We meditated ${minutes} minute${minutes === 1 ? "" : "s"}!`;
-  sumTimeline.replaceChildren(...timeline.map((entry) => makeTimelineItem(entry)));
+async function endMySession() {
+  if (!mySession) return;
+  const session = mySession;
+  const seconds = Math.max(1, Math.round((syncedNow() - session.joinedAt) / 1000));
+  addTimeline("Meditation ended", "end", elapsedOf(session));
+
+  const data = {
+    seconds,
+    together: [...together.values()],
+    timeline: timeline.slice(),
+  };
+
+  teardownLocalSession();
+  message.textContent = "Begin or join a session whenever you're ready.";
+  refreshSessions();
+  showSummary(data);
+
+  try {
+    await publishSession(null);
+  } catch (error) {
+    console.error(error);
+  }
+  refreshSessions();
+}
+
+// One place that brings everything on screen in line with who is meditating.
+function refreshSessions() {
+  const sessions = getSessions();
+  const byId = new Map(sessions.map((s) => [s.id, s]));
+
+  // Each person glows in the colour of the session they are in.
+  const mark = (card, info) => {
+    if (!card) return;
+    if (info) {
+      card.classList.add("in-sess");
+      card.style.setProperty("--sc", rgbOf(info.c));
+      card.dataset.sid = info.id;
+    } else {
+      card.classList.remove("in-sess");
+      card.style.removeProperty("--sc");
+      delete card.dataset.sid;
+    }
+  };
+  mark(localPerson, mySession);
+  if (room) {
+    for (const participant of room.remoteParticipants.values()) {
+      mark(
+        document.getElementById("remote-" + participant.identity),
+        parseSession(participant.attributes),
+      );
+    }
+  }
+
+  // Who has joined or left the session I am in.
+  if (mySession) {
+    const mine = byId.get(mySession.id);
+    const current = new Map();
+    if (mine) {
+      for (const member of mine.members) {
+        if (!member.isLocal) current.set(member.identity, member);
+      }
+    }
+    for (const [id, member] of current) {
+      together.set(id, { name: member.name, picture: member.picture });
+      if (lastMembers && !lastMembers.has(id)) {
+        addTimeline(`${member.name} joined`, "quiet");
+      }
+    }
+    if (lastMembers) {
+      for (const [id, member] of lastMembers) {
+        if (!current.has(id)) addTimeline(`${member.name} left`, "quiet");
+      }
+    }
+    lastMembers = current;
+  }
+
+  updateDock(sessions);
+  updateStateText(sessions, byId);
+  applyRouting();
+  refreshSessCard();
+}
+
+function updateStateText(sessions, byId) {
+  if (!room) {
+    timerState.textContent = "Join the room to meditate together";
+    return;
+  }
+  if (mySession) {
+    const mine = byId.get(mySession.id);
+    const n = mine ? mine.members.length : 1;
+    timerState.textContent = n > 1 ? `Meditating together · ${n}` : "A quiet moment";
+    return;
+  }
+  const n = sessions.reduce((sum, s) => sum + s.members.length, 0);
+  timerState.textContent = n ? `${n} meditating now` : "The room is quiet";
+}
+
+/* ---------- The dock: Meditate / Start / Join / End ---------- */
+
+function updateDock(sessions) {
+  document.body.classList.toggle("in-session", !!mySession);
+
+  let mode = "hidden";
+  if (room) {
+    if (mySession) mode = "session";
+    else if (sessions.length === 0) mode = "solo";
+    else mode = "choose";
+  }
+  if (dock.dataset.mode !== mode) {
+    dock.dataset.mode = mode;
+    closeJoinList();
+  }
+
+  joinBadge.textContent = String(sessions.length);
+  if (!joinList.hidden) {
+    if (sessions.length === 0) closeJoinList();
+    else renderJoinList(sessions);
+  }
+}
+
+function renderJoinList(sessions) {
+  joinList.replaceChildren(
+    ...sessions.map((session, index) => {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "jl-item";
+      item.setAttribute("role", "menuitem");
+      item.style.setProperty("--sc", rgbOf(session.c));
+      item.style.animationDelay = index * 60 + "ms";
+
+      const dot = document.createElement("span");
+      dot.className = "jl-dot";
+
+      const text = document.createElement("span");
+      const name = document.createElement("span");
+      name.className = "jl-name";
+      name.textContent = `${ownerName(session)}'s session`;
+      const sub = document.createElement("span");
+      sub.className = "jl-sub";
+      sub.dataset.t = String(session.t);
+      sub.dataset.n = String(session.members.length);
+      sub.dataset.k = session.k;
+      sub.textContent = subLine(session.t, session.members.length, session.k);
+      text.append(name, sub);
+
+      const badge = document.createElement("span");
+      badge.className = "jl-count";
+      badge.textContent = String(session.members.length);
+
+      item.append(dot, text, badge);
+      item.addEventListener("click", () => joinSession(session));
+      return item;
+    }),
+  );
+}
+
+function openJoinList() {
+  const sessions = getSessions();
+  if (!sessions.length) return;
+  renderJoinList(sessions);
+  joinList.hidden = false;
+  dockJoin.setAttribute("aria-expanded", "true");
+}
+
+function closeJoinList() {
+  joinList.hidden = true;
+  dockJoin.setAttribute("aria-expanded", "false");
+}
+
+/* ---------- Tap a glowing person: a small glass card about their session ---------- */
+
+function sessionForCard(card) {
+  const sid = card && card.dataset.sid;
+  return sid ? getSessions().find((s) => s.id === sid) || null : null;
+}
+
+function openSessCard(session, anchor) {
+  cardSid = session.id;
+  sessCard.hidden = false;
+  fillSessCard(session);
+
+  const rect = anchor.getBoundingClientRect();
+  const width = 236;
+  const left = Math.min(
+    Math.max(rect.left + rect.width / 2 - width / 2, 12),
+    window.innerWidth - width - 12,
+  );
+  let top = rect.bottom + 10;
+  if (top + 190 > window.innerHeight) top = Math.max(12, rect.top - 200);
+  sessCard.style.left = left + "px";
+  sessCard.style.top = top + "px";
+}
+
+function fillSessCard(session) {
+  sessCard.style.setProperty("--sc", rgbOf(session.c));
+  $("scTitle").textContent = `${ownerName(session)}'s session`;
+  $("scWhat").textContent = sessionLabel(session);
+  const n = session.members.length;
+  $("scMeta").textContent =
+    `${formatTime(elapsedOf(session))} · ${n} meditating` +
+    (n > 1 ? ": " + session.members.map((m) => m.name).join(", ") : "");
+
+  const joinBtn = $("scJoin");
+  const mine = mySession && mySession.id === session.id;
+  joinBtn.hidden = !!mine;
+  joinBtn.textContent = mySession ? "Switch to this session" : "Join session";
+  if (mine) $("scMeta").textContent += "\nYou're here";
+}
+
+function refreshSessCard() {
+  if (sessCard.hidden) return;
+  const session = getSessions().find((s) => s.id === cardSid);
+  if (!session) closeSessCard();
+  else fillSessCard(session);
+}
+
+function closeSessCard() {
+  sessCard.hidden = true;
+  cardSid = null;
+}
+
+/* ---------- Voices: you only hear the people in your session ---------- */
+
+// Nobody's voice reaches you unless they are in the session you are in.
+// Video circles stay on for everyone so you can see who is here.
+function applyRouting() {
+  if (!room) return;
+  const mine = mySession && mySession.id;
+  for (const participant of room.remoteParticipants.values()) {
+    const theirs = parseSession(participant.attributes);
+    const sameSession = !!mine && !!theirs && theirs.id === mine;
+    for (const publication of participant.trackPublications.values()) {
+      const want = publication.kind === Track.Kind.Audio ? sameSession : true;
+      if (
+        typeof publication.setSubscribed === "function" &&
+        publication.isSubscribed !== want
+      ) {
+        publication.setSubscribed(want);
+      }
+    }
+  }
+}
+
+/* ---------- The end card ---------- */
+
+function faceNode(person) {
+  const item = document.createElement("li");
+  const face = document.createElement("div");
+  face.className = "sum-face";
+  face.textContent = initialOf(person.name);
+  if (isLinePicture(person.picture)) {
+    const img = document.createElement("img");
+    img.alt = "";
+    img.referrerPolicy = "no-referrer";
+    img.addEventListener("load", () => (face.firstChild.textContent = ""));
+    img.addEventListener("error", () => img.remove());
+    img.src = person.picture;
+    face.append(img);
+  }
+  const name = document.createElement("div");
+  name.className = "sum-name";
+  name.textContent = person.name;
+  item.append(face, name);
+  return item;
+}
+
+function summaryTitle(data) {
+  const minutes = Math.round(data.seconds / 60);
+  const group = data.together.length > 1;
+  if (minutes < 1) return group ? "We sat together for a moment!" : "You sat for a moment!";
+  const span = `${minutes} minute${minutes === 1 ? "" : "s"}`;
+  return group ? `We meditated ${span}!` : `You meditated ${span}!`;
+}
+
+function showSummary(data) {
+  lastSummary = data;
+  sumTitle.textContent = summaryTitle(data);
+
+  const group = data.together.length > 1;
+  $("sumTogether").hidden = !group;
+  $("sumFaces").replaceChildren(...data.together.map(faceNode));
+
+  sumTimeline.replaceChildren(...data.timeline.map((entry) => makeTimelineItem(entry)));
+  hideCardImage();
   summary.hidden = false;
   $("sumClose").focus({ preventScroll: true });
 }
 
 function hideSummary() {
   summary.hidden = true;
+  hideCardImage();
 }
 
-function toggleSession() {
-  if (!room) return;
-  if (session.running) {
-    broadcast({ t: "end", elapsed: elapsedNow() });
-  } else {
-    broadcast({ t: "start" });
+function hideCardImage() {
+  const img = $("sumImg");
+  if (img.src.startsWith("blob:")) URL.revokeObjectURL(img.src);
+  img.removeAttribute("src");
+  img.hidden = true;
+  $("sumHint").hidden = true;
+}
+
+function shareText(data) {
+  const names = data.together.map((p) => p.name);
+  const withLine =
+    names.length > 1
+      ? "With " + names.slice(0, -1).join(", ") + " & " + names[names.length - 1] + ". "
+      : "";
+  const link = liffId ? `\nhttps://liff.line.me/${liffId}` : "";
+  return `${summaryTitle(data)} ${withLine}Sadhuuu 🙏✨ The Boon is Yours!${link}`;
+}
+
+function wrapLines(ctx, text, maxWidth) {
+  const lines = [];
+  let line = "";
+  for (const word of text.split(/\s+/)) {
+    const test = line ? line + " " + word : word;
+    if (line && ctx.measureText(test).width > maxWidth) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = test;
+    }
   }
+  if (line) lines.push(line);
+  return lines;
+}
+
+// Draws the card as a picture so it can be saved or sent anywhere.
+async function renderCardImage(data) {
+  const W = 1080;
+  const H = 1350;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d");
+
+  try {
+    await Promise.all([
+      document.fonts.load('800 64px "Hanken Grotesk"'),
+      document.fonts.load('400 40px "Hanken Grotesk"'),
+      document.fonts.load('italic 300 150px "Hanken Grotesk"'),
+    ]);
+  } catch {
+    // the system font is used instead
+  }
+  const font = '"Hanken Grotesk", "Noto Sans Thai", system-ui, sans-serif';
+
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, "#0a0f1d");
+  bg.addColorStop(1, "#03050b");
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  const haze = ctx.createRadialGradient(W / 2, 270, 0, W / 2, 270, 560);
+  haze.addColorStop(0, "rgba(150,175,230,0.34)");
+  haze.addColorStop(1, "rgba(150,175,230,0)");
+  ctx.fillStyle = haze;
+  ctx.fillRect(0, 0, W, H);
+
+  // Stars, always the same pattern.
+  let seed = 7;
+  const rand = () => {
+    seed = (seed * 16807) % 2147483647;
+    return seed / 2147483647;
+  };
+  for (let i = 0; i < 110; i++) {
+    ctx.fillStyle = `rgba(255,255,255,${0.25 + rand() * 0.65})`;
+    ctx.beginPath();
+    ctx.arc(rand() * W, rand() * H, 0.8 + rand() * 1.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // The moon.
+  ctx.save();
+  ctx.shadowColor = "rgba(190,210,255,0.85)";
+  ctx.shadowBlur = 90;
+  const moon = ctx.createRadialGradient(W / 2 - 40, 230, 10, W / 2, 270, 130);
+  moon.addColorStop(0, "#ffffff");
+  moon.addColorStop(0.6, "#e3e8f3");
+  moon.addColorStop(1, "#a9b4cc");
+  ctx.fillStyle = moon;
+  ctx.beginPath();
+  ctx.arc(W / 2, 270, 120, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+
+  let y = 520;
+  ctx.fillStyle = "#eef1f8";
+  ctx.font = `800 72px ${font}`;
+  for (const line of wrapLines(ctx, summaryTitle(data), 880)) {
+    ctx.fillText(line, W / 2, y);
+    y += 86;
+  }
+
+  const names = data.together.map((p) => p.name);
+  if (names.length > 1) {
+    y += 14;
+    ctx.fillStyle = "#9aa3b8";
+    ctx.font = `600 30px ${font}`;
+    ctx.fillText("MEDITATED TOGETHER", W / 2, y);
+    y += 24;
+    ctx.fillStyle = "#dbe4f7";
+    ctx.font = `400 44px ${font}`;
+    const list =
+      names.length > 2
+        ? names.slice(0, -1).join(", ") + " & " + names[names.length - 1]
+        : names.join(" & ");
+    for (const line of wrapLines(ctx, list, 880)) {
+      y += 56;
+      ctx.fillText(line, W / 2, y);
+    }
+  }
+
+  ctx.save();
+  ctx.shadowColor = "rgba(255,214,140,0.6)";
+  ctx.shadowBlur = 50;
+  ctx.fillStyle = "#fff6dd";
+  ctx.font = `italic 300 170px ${font}`;
+  ctx.fillText("Sadhuuu", W / 2, Math.max(y + 200, 1000));
+  ctx.restore();
+
+  ctx.fillStyle = "#cfe0ff";
+  ctx.font = `600 54px ${font}`;
+  ctx.fillText("The Boon is Yours!", W / 2, Math.max(y + 200, 1000) + 90);
+
+  ctx.fillStyle = "#6f7a94";
+  ctx.font = `700 34px ${font}`;
+  ctx.fillText("THE SANCTUARY", W / 2, H - 70);
+
+  return new Promise((resolve, reject) =>
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error("No image"))),
+      "image/png",
+    ),
+  );
+}
+
+function showCardImage(blob) {
+  const img = $("sumImg");
+  hideCardImage();
+  img.src = URL.createObjectURL(blob);
+  img.hidden = false;
+  $("sumHint").hidden = false;
+}
+
+async function shareCard() {
+  if (!lastSummary) return;
+  sumShare.disabled = true;
+  try {
+    const blob = await renderCardImage(lastSummary);
+    const text = shareText(lastSummary);
+    const file = new File([blob], "sanctuary-meditation.png", { type: "image/png" });
+
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], text });
+    } else if (
+      liffReady &&
+      liff.isApiAvailable &&
+      liff.isApiAvailable("shareTargetPicker")
+    ) {
+      // Inside LINE: send the words to a chat or group.
+      await liff.shareTargetPicker([{ type: "text", text }]);
+    } else {
+      showCardImage(blob);
+    }
+  } catch (error) {
+    if (!(error && error.name === "AbortError")) {
+      console.error(error);
+      try {
+        showCardImage(await renderCardImage(lastSummary));
+      } catch {
+        // nothing more to try
+      }
+    }
+  } finally {
+    sumShare.disabled = false;
+  }
+}
+
+/* ---------- Shared clock ---------- */
+
+async function syncClock() {
+  let best = null;
+  for (let i = 0; i < 4; i++) {
+    const started = performance.now();
+    try {
+      const response = await fetch("/time", { cache: "no-store" });
+      const data = await response.json();
+      const rtt = performance.now() - started;
+      const offset = data.now + rtt / 2 - Date.now();
+      if (!best || rtt < best.rtt) best = { rtt, offset };
+    } catch {
+      // try again
+    }
+  }
+  if (best) clockOffset = Math.round(best.offset);
 }
 
 /* ---------- Room lifecycle ---------- */
@@ -679,14 +1243,18 @@ function resetLocalUi() {
   showLocalVideo(false);
   clearRemote();
   updateCount();
-  localPerson.classList.remove("speaking", "glow-metta", "glow-boon");
+  localPerson.classList.remove("speaking", "glow-metta", "glow-boon", "in-sess");
+  localPerson.style.removeProperty("--sc");
+  delete localPerson.dataset.sid;
   fx.replaceChildren();
   micEnabled = false;
   cameraEnabled = false;
   setMicLabel(true); // the bubbles look "on" until you join
   setCameraLabel(true);
   resetChat();
-  resetSession();
+  clearInterval(tick);
+  teardownLocalSession();
+  hideSummary();
 }
 
 function wireRoomEvents(activeRoom) {
@@ -715,30 +1283,32 @@ function wireRoomEvents(activeRoom) {
     refreshMedia();
   });
   for (const event of [
-    RoomEvent.TrackPublished,
     RoomEvent.TrackUnpublished,
     RoomEvent.LocalTrackPublished,
     RoomEvent.LocalTrackUnpublished,
   ]) {
     activeRoom.on(event, refreshMedia);
   }
+  // New tracks are only listened to if they belong to my session.
+  activeRoom.on(RoomEvent.TrackPublished, () => {
+    refreshMedia();
+    applyRouting();
+  });
 
   activeRoom.on(RoomEvent.ParticipantConnected, (participant) => {
     participantCard(participant);
     updateCount();
-    if (session.running) {
-      addTimeline(`${participant.name || "Someone"} joined`, "quiet");
-    }
+    refreshSessions();
   });
 
   activeRoom.on(RoomEvent.ParticipantDisconnected, (participant) => {
     const card = document.getElementById("remote-" + participant.identity);
     if (card) card.remove();
     updateCount();
-    if (session.running) {
-      addTimeline(`${participant.name || "Someone"} left`, "quiet");
-    }
+    refreshSessions();
   });
+
+  activeRoom.on(RoomEvent.ParticipantAttributesChanged, refreshSessions);
 
   activeRoom.on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
     document
@@ -797,9 +1367,10 @@ async function joinRoom() {
   message.textContent = "Connecting to the room…";
 
   try {
-    const data = await fetchToken(participantName);
+    const [data] = await Promise.all([fetchToken(participantName), syncClock()]);
 
-    room = new Room({ adaptiveStream: true, dynacast: true });
+    // Nothing is listened to until we know which session (if any) is mine.
+    room = new Room({ adaptiveStream: true, dynacast: true, autoSubscribe: false });
     wireRoomEvents(room);
 
     await room.connect(data.url, data.token);
@@ -812,19 +1383,13 @@ async function joinRoom() {
 
     for (const participant of room.remoteParticipants.values()) {
       participantCard(participant);
-      for (const publication of participant.trackPublications.values()) {
-        if (publication.track) {
-          attachRemoteTrack(publication.track, publication, participant);
-        }
-      }
     }
 
     updateCount();
     resetChat();
-    setControls(true);
-
-    // Ask whoever is already here for the meditation in progress, if any.
-    send({ t: "hello" });
+    clearInterval(tick);
+    tick = setInterval(secondTick, 500);
+    setControls(true); // also shows who is already meditating
 
     // Mic and camera are enabled separately, so a denied camera
     // permission does not stop you from joining with audio only.
@@ -851,7 +1416,7 @@ async function joinRoom() {
 
     message.textContent = problems.length
       ? `You're connected, but the ${problems.join(" and ")} couldn't start. Check your browser permissions, then use the bubbles.`
-      : "You're connected. People in this room can now hear and see one another.";
+      : "You're in the room. Begin or join a session when you're ready.";
   } catch (error) {
     console.error(error);
     if (room) {
@@ -928,6 +1493,7 @@ async function initLine() {
     const response = await fetch("/config");
     const config = await response.json();
     if (!config.liffId || !window.liff) return; // LINE login not set up: guests only
+    liffId = config.liffId;
 
     await liff.init({ liffId: config.liffId });
     liffReady = true;
@@ -985,8 +1551,20 @@ function setUiHidden(hidden) {
 }
 
 document.addEventListener("click", (event) => {
+  const target = event.target;
+
+  // Tapping away from an open card or list just closes it.
+  if (!sessCard.hidden && !target.closest("#sessCard, .person")) {
+    closeSessCard();
+    return;
+  }
+  if (!joinList.hidden && !target.closest("#joinList, #dockJoin")) {
+    closeJoinList();
+    return;
+  }
+
   if (!document.body.classList.contains("in-room")) return;
-  if (event.target.closest("button, input, a, nav, .person, .sheet, .summary")) {
+  if (target.closest("button, input, a, nav, .person, .sheet, .summary, .sess-card")) {
     return;
   }
   setUiHidden(!document.body.classList.contains("ui-hidden"));
@@ -995,10 +1573,36 @@ document.addEventListener("click", (event) => {
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
   if (!summary.hidden) hideSummary();
+  else if (!sessCard.hidden) closeSessCard();
+  else if (!joinList.hidden) closeJoinList();
   else if (!chatSheet.hidden) closeChat();
 });
 
 /* ---------- Wiring ---------- */
+
+people.addEventListener("click", (event) => {
+  const card = event.target.closest(".person");
+  const session = sessionForCard(card);
+  if (!session) return;
+  if (!sessCard.hidden && cardSid === session.id) {
+    closeSessCard();
+    return;
+  }
+  closeJoinList();
+  openSessCard(session, card);
+});
+
+$("scJoin").addEventListener("click", () => {
+  const session = getSessions().find((s) => s.id === cardSid);
+  if (session) joinSession(session);
+});
+
+$("dockMeditate").addEventListener("click", startSession);
+$("dockStart").addEventListener("click", startSession);
+$("dockEnd").addEventListener("click", endMySession);
+dockJoin.addEventListener("click", () =>
+  joinList.hidden ? openJoinList() : closeJoinList(),
+);
 
 railToggle.addEventListener("click", () =>
   setRailMinimized(!controls.classList.contains("min")),
@@ -1013,7 +1617,6 @@ $("actRejoice").addEventListener("click", () => sendAction("rejoice"));
 joinButton.addEventListener("click", joinRoom);
 micButton.addEventListener("click", toggleMic);
 cameraButton.addEventListener("click", toggleCamera);
-sessionButton.addEventListener("click", toggleSession);
 leaveButton.addEventListener("click", leaveRoom);
 
 chatToggle.addEventListener("click", () =>
@@ -1029,6 +1632,7 @@ chatForm.addEventListener("submit", (event) => {
 });
 
 $("sumClose").addEventListener("click", hideSummary);
+sumShare.addEventListener("click", shareCard);
 
 window.addEventListener("beforeunload", () => {
   if (room) room.disconnect();
@@ -1037,5 +1641,5 @@ window.addEventListener("beforeunload", () => {
 resetChat();
 setMicLabel(true);
 setCameraLabel(true);
-updateSessionUi();
+refreshSessions();
 initLine();

@@ -12,6 +12,7 @@
   --off: #f87171;
   --line-green: #06c755;
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --me: 170, 195, 255; /* tint of the session you are in */
   --bubble: 50px;
   --rail-pad: 68px; /* room kept free for the bubbles on the right */
   color-scheme: dark;
@@ -203,6 +204,10 @@ body.ui-hidden .ui {
   pointer-events: none;
 }
 
+.in-session .orb-wrap::before {
+  background: radial-gradient(closest-side, rgba(var(--me), 0.22), rgba(var(--me), 0.07) 55%, transparent 76%);
+}
+
 .orb-wrap canvas {
   position: relative;
   display: block;
@@ -233,11 +238,16 @@ body.ui-hidden .ui {
 }
 
 #clock {
+  display: none;
   font-size: clamp(52px, 15vw, 72px);
   font-weight: 200;
   letter-spacing: -0.02em;
   line-height: 1;
   font-variant-numeric: tabular-nums;
+}
+
+.in-session #clock {
+  display: block;
 }
 
 #timerState {
@@ -532,6 +542,30 @@ body.ui-hidden .people {
 
 .avatar.has-photo .camera-placeholder {
   display: none;
+}
+
+/* Someone in a session glows softly in that session's colour; tap them to see it. */
+.person.in-sess {
+  cursor: pointer;
+}
+
+.person.in-sess .avatar {
+  animation: sess-glow 4.5s ease-in-out infinite alternate;
+}
+
+@keyframes sess-glow {
+  from {
+    box-shadow:
+      inset 0 0 0 1.5px rgba(var(--sc), 0.6),
+      0 0 12px 1px rgba(var(--sc), 0.3),
+      0 0 0 0 transparent;
+  }
+  to {
+    box-shadow:
+      inset 0 0 0 1.5px rgba(var(--sc), 0.95),
+      0 0 28px 7px rgba(var(--sc), 0.5),
+      0 0 0 0 transparent;
+  }
 }
 
 .person.speaking .avatar {
@@ -843,7 +877,7 @@ body.ui-hidden .people {
   pointer-events: none;
 }
 
-.in-room .actions {
+.in-session .actions {
   display: flex;
 }
 
@@ -1212,6 +1246,230 @@ body.ui-hidden .people {
   }
 }
 
+/* ---------- Dock: Meditate / Start / Join, bottom centre ---------- */
+
+.dock {
+  position: fixed;
+  left: 50%;
+  bottom: calc(30px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 3;
+  display: none;
+  align-items: center;
+  gap: 16px;
+  pointer-events: none;
+  transition: opacity 0.4s var(--ease), transform 0.5s var(--ease);
+}
+
+.in-room .dock {
+  display: flex;
+}
+
+/* The action keys open sideways across the same strip, so the dock steps aside. */
+.actions.open ~ .dock {
+  opacity: 0;
+  visibility: hidden;
+  transform: translate(-50%, 10px);
+}
+
+.dock-btn {
+  display: none;
+  pointer-events: auto;
+  animation: bubble-pop 0.6s cubic-bezier(0.34, 1.4, 0.64, 1) both;
+}
+
+.dock[data-mode="solo"] #dockMeditate,
+.dock[data-mode="choose"] #dockStart,
+.dock[data-mode="choose"] #dockJoin,
+.dock[data-mode="session"] #dockEnd {
+  display: grid;
+}
+
+@keyframes bubble-pop {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.6);
+  }
+}
+
+#dockMeditate svg {
+  width: 26px;
+  height: 26px;
+}
+
+#dockEnd {
+  color: #f2a592;
+}
+
+.badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 19px;
+  height: 19px;
+  padding: 0 5px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: var(--mist);
+  color: #0a0e18;
+  font-size: 11px;
+  font-weight: 800;
+  pointer-events: none;
+}
+
+#dockJoin[aria-expanded="true"] {
+  border-color: rgba(220, 232, 255, 0.55);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.35),
+    0 0 24px rgba(180, 205, 255, 0.4);
+}
+
+.join-list {
+  position: absolute;
+  bottom: calc(100% + 30px);
+  left: 50%;
+  width: min(260px, 72vw);
+  max-height: 42vh;
+  max-height: 42dvh;
+  overflow-y: auto;
+  padding: 8px;
+  border-radius: 26px;
+  border: 1px solid var(--rim);
+  background: rgba(10, 14, 24, 0.8);
+  -webkit-backdrop-filter: blur(22px);
+  backdrop-filter: blur(22px);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  pointer-events: auto;
+  transform: translateX(-50%);
+  transform-origin: 50% 100%;
+  animation: list-in 0.5s cubic-bezier(0.34, 1.3, 0.64, 1) both;
+}
+
+@keyframes list-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(14px) scale(0.85);
+  }
+}
+
+.jl-item {
+  display: grid;
+  grid-template-columns: 16px 1fr auto;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 0;
+  border-radius: 20px;
+  background: transparent;
+  text-align: left;
+  font-size: 14px;
+  animation: tl-in 0.5s var(--ease) both;
+}
+
+.jl-item:active {
+  background: rgba(220, 232, 255, 0.1);
+}
+
+.jl-dot,
+.sc-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: rgb(var(--sc));
+  box-shadow: 0 0 14px rgba(var(--sc), 0.85);
+}
+
+.jl-name {
+  display: block;
+  font-weight: 600;
+}
+
+.jl-sub {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.jl-count {
+  min-width: 26px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(220, 232, 255, 0.12);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+
+/* ---------- A small clear-glass card about someone's session ---------- */
+
+.sess-card {
+  position: fixed;
+  z-index: 6;
+  width: 236px;
+  padding: 16px 16px 14px;
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.04));
+  -webkit-backdrop-filter: blur(22px) saturate(1.4);
+  backdrop-filter: blur(22px) saturate(1.4);
+  box-shadow:
+    0 18px 50px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  text-align: left;
+  animation: card-pop 0.45s var(--ease) both;
+}
+
+@keyframes card-pop {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.94);
+  }
+}
+
+.sc-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sc-title {
+  font-weight: 800;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
+.sc-what {
+  margin-top: 10px;
+  font-size: 14px;
+}
+
+.sc-meta {
+  white-space: pre-line;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.sc-join {
+  width: 100%;
+  margin-top: 14px;
+  padding: 11px;
+  border: 0;
+  border-radius: 999px;
+  background: rgb(var(--sc));
+  color: #0a0e18;
+  font-weight: 700;
+  font-size: 14px;
+}
+
 .summary {
   position: fixed;
   inset: 0;
@@ -1301,10 +1559,103 @@ body.ui-hidden .people {
   animation: none;
 }
 
-.sum-close {
+.sum-together {
+  margin-top: 18px;
+}
+
+.sum-with {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.sum-faces {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px 10px;
+}
+
+.sum-faces li {
+  width: 60px;
+}
+
+.sum-face {
+  position: relative;
+  width: 46px;
+  height: 46px;
+  margin: 0 auto 6px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  font-size: 20px;
+  font-weight: 200;
+  background:
+    radial-gradient(circle at 35% 25%, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.03) 55%, rgba(0, 0, 0, 0.3)),
+    #10151f;
+  box-shadow:
+    inset 0 0 0 1px var(--rim),
+    0 0 16px rgba(190, 210, 255, 0.28);
+}
+
+.sum-face img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.sum-name {
+  font-size: 11px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sum-actions {
   margin-top: 20px;
-  padding-left: 36px;
-  padding-right: 36px;
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+
+.sum-share {
+  padding: 12px 24px;
+  border-radius: 999px;
+  border: 1px solid rgba(220, 232, 255, 0.35);
+  background: var(--glass);
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.sum-share:disabled {
+  opacity: 0.5;
+}
+
+.sum-close {
+  padding-left: 30px;
+  padding-right: 30px;
+}
+
+.sum-img {
+  display: block;
+  width: 100%;
+  margin-top: 18px;
+  border-radius: 18px;
+}
+
+.sum-hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--faint);
 }
 
 /* ---------- After joining: the moon shrinks to make room for people ---------- */
@@ -1353,6 +1704,12 @@ body.ui-hidden .people {
 
   .float-text {
     transform: translateX(-50%);
+  }
+
+  .person.in-sess .avatar {
+    box-shadow:
+      inset 0 0 0 1.5px rgba(var(--sc), 0.9),
+      0 0 22px 5px rgba(var(--sc), 0.45);
   }
 }
 
