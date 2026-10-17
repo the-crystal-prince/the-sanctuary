@@ -11,8 +11,14 @@
 <link rel="stylesheet" href="style.css">
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 </head>
-<body>
+<body class="intro-on">
 <div class="sky" aria-hidden="true"></div>
+
+<!-- Intro: a transparent lotus video plays over the sky, then the room appears. -->
+<div class="intro" id="intro" role="presentation">
+  <video class="intro-video" id="introVideo" muted playsinline preload="auto" disablepictureinpicture aria-hidden="true"></video>
+  <div class="intro-note" id="introNote" aria-live="polite"></div>
+</div>
 
 <main class="stage" id="stage">
   <header class="top ui">
@@ -214,6 +220,13 @@
   </div>
 </section>
 
+<script>
+  // If the intro script ever fails to load, never leave the room hidden.
+  setTimeout(function () {
+    if (!window.__introStarted) document.body.classList.remove("intro-on");
+  }, 8000);
+</script>
+<script type="module" src="intro.js"></script>
 <script type="module" src="orb.js"></script>
 <script type="module" src="app.js"></script>
 </body>
