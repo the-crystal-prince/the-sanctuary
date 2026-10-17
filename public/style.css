@@ -1800,6 +1800,7 @@ body.ui-hidden .people {
 .sum-actions {
   margin-top: 20px;
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
   gap: 10px;
 }

@@ -109,6 +109,7 @@ const summary = $("summary");
 const sumTitle = $("sumTitle");
 const sumTimeline = $("sumTimeline");
 const sumShare = $("sumShare");
+const sumShareTimeline = $("sumShareTimeline");
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -1263,6 +1264,7 @@ function hideCardImage() {
   img.removeAttribute("src");
   img.hidden = true;
   $("sumHint").hidden = true;
+  $("sumHint").textContent = "Press and hold the card to save it.";
 }
 
 function shareText(data) {
@@ -1410,6 +1412,171 @@ function showCardImage(blob) {
   img.src = URL.createObjectURL(blob);
   img.hidden = false;
   $("sumHint").hidden = false;
+}
+
+// The timeline as words: one line per moment, ready to paste anywhere.
+function timelineText(data) {
+  const lines = data.timeline.map((e) => `${formatTime(e.at)}  ${e.text}`);
+  const names = data.together.map((p) => p.name);
+  const withLine = names.length > 1 ? `With ${names.join(", ")}\n` : "";
+  const link = liffId ? `\nhttps://liff.line.me/${liffId}` : "";
+  return `🌙 ${summaryTitle(data)}\n${withLine}\n${lines.join("\n")}\n\nSadhuuu 🙏✨ The Boon is Yours!${link}`;
+}
+
+const TIMELINE_DOT = {
+  start: "#cfe0ff",
+  end: "#cfe0ff",
+  metta: "#ff78b4",
+  boon: "#ffffff",
+  rejoice: "#ffd98a",
+  quiet: "#6f7a94",
+};
+
+// Draws the timeline as a tall picture (it grows with the number of moments).
+async function renderTimelineImage(data) {
+  const W = 1080;
+  const ROW = 78;
+  const entries = data.timeline.slice(0, 40); // keeps the picture a sane size
+  const H = Math.max(900, 460 + entries.length * ROW + 200);
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d");
+
+  try {
+    await Promise.all([
+      document.fonts.load('800 64px "Hanken Grotesk"'),
+      document.fonts.load('400 40px "Hanken Grotesk"'),
+    ]);
+  } catch {
+    // the system font is used instead
+  }
+  const font = '"Hanken Grotesk", "Noto Sans Thai", system-ui, sans-serif';
+
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, "#0a0f1d");
+  bg.addColorStop(1, "#03050b");
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  let seed = 11;
+  const rand = () => {
+    seed = (seed * 16807) % 2147483647;
+    return seed / 2147483647;
+  };
+  for (let i = 0; i < 90; i++) {
+    ctx.fillStyle = `rgba(255,255,255,${0.2 + rand() * 0.6})`;
+    ctx.beginPath();
+    ctx.arc(rand() * W, rand() * H, 0.8 + rand() * 1.4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#eef1f8";
+  ctx.font = `800 62px ${font}`;
+  let y = 130;
+  for (const line of wrapLines(ctx, summaryTitle(data), 900)) {
+    ctx.fillText(line, W / 2, y);
+    y += 74;
+  }
+  const names = data.together.map((p) => p.name);
+  if (names.length > 1) {
+    ctx.fillStyle = "#9aa3b8";
+    ctx.font = `400 36px ${font}`;
+    for (const line of wrapLines(ctx, "with " + names.join(", "), 900)) {
+      ctx.fillText(line, W / 2, y);
+      y += 46;
+    }
+  }
+
+  // The line and its moments.
+  const x = 250;
+  const top = y + 50;
+  if (entries.length > 1) {
+    ctx.strokeStyle = "rgba(190,210,255,0.28)";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(x, top);
+    ctx.lineTo(x, top + (entries.length - 1) * ROW);
+    ctx.stroke();
+  }
+  entries.forEach((entry, i) => {
+    const cy = top + i * ROW;
+    const color = TIMELINE_DOT[entry.kind] || "#cfe0ff";
+    ctx.save();
+    ctx.shadowColor = color;
+    ctx.shadowBlur = entry.kind === "quiet" ? 0 : 18;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(x, cy, 12, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    ctx.textAlign = "right";
+    ctx.fillStyle = "#9aa3b8";
+    ctx.font = `600 32px ${font}`;
+    ctx.fillText(formatTime(entry.at), x - 34, cy + 11);
+
+    ctx.textAlign = "left";
+    ctx.fillStyle = entry.kind === "quiet" ? "#9aa3b8" : "#eef1f8";
+    ctx.font = `400 38px ${font}`;
+    let text = entry.text;
+    while (text.length > 3 && ctx.measureText(text).width > W - x - 70) text = text.slice(0, -2);
+    ctx.fillText(text === entry.text ? text : text + "…", x + 34, cy + 12);
+  });
+
+  ctx.textAlign = "center";
+  ctx.save();
+  ctx.shadowColor = "rgba(255,214,140,0.6)";
+  ctx.shadowBlur = 40;
+  ctx.fillStyle = "#fff6dd";
+  ctx.font = `italic 300 120px ${font}`;
+  ctx.fillText("Sadhuuu", W / 2, H - 150);
+  ctx.restore();
+  ctx.fillStyle = "#6f7a94";
+  ctx.font = `700 30px ${font}`;
+  ctx.fillText("THE SANCTUARY", W / 2, H - 60);
+
+  return new Promise((resolve, reject) =>
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error("No image"))),
+      "image/png",
+    ),
+  );
+}
+
+async function shareTimeline() {
+  if (!lastSummary) return;
+  sumShareTimeline.disabled = true;
+  const text = timelineText(lastSummary);
+  try {
+    const blob = await renderTimelineImage(lastSummary);
+    const file = new File([blob], "sanctuary-timeline.png", { type: "image/png" });
+
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], text });
+    } else if (navigator.share) {
+      await navigator.share({ text });
+    } else if (
+      liffReady &&
+      liff.isApiAvailable &&
+      liff.isApiAvailable("shareTargetPicker")
+    ) {
+      await liff.shareTargetPicker([{ type: "text", text }]);
+    } else {
+      showCardImage(blob);
+      try {
+        await navigator.clipboard.writeText(text);
+        $("sumHint").textContent = "Timeline text copied. Press and hold the picture to save it.";
+      } catch {
+        // the picture is still there to save
+      }
+    }
+  } catch (error) {
+    if (!(error && error.name === "AbortError")) console.error(error);
+  } finally {
+    sumShareTimeline.disabled = false;
+  }
 }
 
 async function shareCard() {
@@ -2431,6 +2598,7 @@ if (window.ResizeObserver) {
 
 $("sumClose").addEventListener("click", hideSummary);
 sumShare.addEventListener("click", shareCard);
+sumShareTimeline.addEventListener("click", shareTimeline);
 
 window.addEventListener("beforeunload", () => {
   if (room) room.disconnect();
