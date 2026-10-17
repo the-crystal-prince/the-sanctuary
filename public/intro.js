@@ -2,8 +2,9 @@
 // sky, until the person taps (or presses any key) to enter the room.
 //
 // Two files are tried, best match first:
+//   intro/intro.mov   for Apple devices (iPhone, iPad, Mac Safari), which every
+//                     browser on iOS and iPadOS is built on, LINE included
 //   intro/intro.webm  VP9 with alpha: Chrome, Android, desktop Firefox
-//   intro/intro.mov   ProRes 4444 with alpha: only Safari-family browsers might play it
 // Add ?intro=webm or ?intro=mov to the address to try just one, ?intro=off to skip.
 
 const body = document.body;
@@ -32,12 +33,22 @@ function finish() {
   }, 1000);
 }
 
+// iPhone, iPad (which reports itself as a Mac), and Safari on Mac.
+function isAppleWebKit() {
+  const ua = navigator.userAgent || "";
+  if (/iPhone|iPad|iPod/.test(ua)) return true;
+  if (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1) return true;
+  return /Safari/.test(ua) && !/Chrome|Chromium|CriOS|FxiOS|Android|Edg/.test(ua);
+}
+
 function chooseSources() {
   const wanted = new URLSearchParams(location.search).get("intro");
   if (wanted === "off") return [];
   let list = SOURCES.slice();
   if (wanted === "webm" || wanted === "mov") {
     list = list.filter((item) => item.name === wanted);
+  } else if (isAppleWebKit()) {
+    list.reverse(); // the mov first; the webm only if the mov can't play
   }
   // Only try files this browser says it can play.
   return list.filter((item) => video.canPlayType(item.type) !== "");

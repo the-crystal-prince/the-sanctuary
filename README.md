@@ -9,7 +9,7 @@ A small shared meditation room: people join the "Forest Room" with audio and vid
 
 ## Intro video
 
-`public/intro.js` loops a transparent video over the night sky until someone taps to enter the room. It looks for `public/intro/intro.webm` (VP9 with alpha: Chrome, Android) and `public/intro/intro.mov` (Safari-family browsers). Add `?intro=webm`, `?intro=mov` or `?intro=off` to the address to try one or skip it.
+`public/intro.js` loops a transparent video over the night sky until someone taps to enter the room. It looks for `public/intro/intro.webm` (VP9 with alpha: Chrome, Android) and `public/intro/intro.mov` (tried first on iPhone, iPad and Safari). Add `?intro=webm`, `?intro=mov` or `?intro=off` to the address to try one or skip it.
 
 ## Environment variables
 
