@@ -38,6 +38,8 @@ let musicShared = false; // the music playing here is my session's music
 let musicPlayingT = 0; // start time of the shared music playing here
 let musicSphere = false; // show the video as a circle in the sphere
 let localMusic = null; // the music state I last published
+let roomToken = null; // proves to the server that I am in the room (for audio uploads)
+let sharedAudio = null; // the session's uploaded audio playing here (its state)
 let lastMusicT = 0; // newest shared music state I have acted on
 
 // Everyone's clocks are lined up to the server's, so timers agree.
@@ -94,6 +96,7 @@ const musicStage = $("musicStage");
 const musicSlot = $("musicSlot");
 const musicActions = $("musicActions");
 const musicStop = $("musicStop");
+const musicPause = $("musicPause");
 const musicSphereBtn = $("musicSphere");
 const musicAdd = $("musicAdd");
 const musicFiles = $("musicFiles");
@@ -548,6 +551,8 @@ function parseSession(attrs) {
       k: clean(String(data.k || "timer"), 12),
       by: clean(String(data.by || ""), 50),
       title: clean(String(data.title || ""), 80),
+      // Who started it: only they control the session's music.
+      o: clean(String(data.o || ""), 80),
       // Length of a preset timer in seconds. 0 means an open timer that counts up.
       d: Number.isInteger(data.d) && data.d > 0 && data.d <= 14400 ? data.d : 0,
     };
@@ -623,6 +628,7 @@ async function publishSession(session) {
           by: session.by,
           title: session.title || "",
           d: session.d || 0,
+          o: session.o || "",
         }),
       }
     : { sid: "", sdata: "" };
@@ -906,6 +912,7 @@ function startSession(seconds) {
       t: syncedNow(),
       k: "timer",
       by: myMember().name,
+      o: myMember().identity,
       title: "",
       d,
     },
@@ -921,6 +928,7 @@ function joinSession(session) {
       t: session.t,
       k: session.k,
       by: session.by,
+      o: session.o,
       title: session.title,
       d: session.d || 0,
     },
@@ -1770,6 +1778,7 @@ async function joinRoom() {
     wireRoomEvents(room);
 
     await room.connect(data.url, data.token);
+    roomToken = data.token;
 
     localName.textContent = participantName;
     placeholder.textContent = initialOf(participantName);
@@ -2068,15 +2077,26 @@ function showStage() {
 }
 
 function refreshMusicActions() {
-  musicActions.hidden = !ytPlayer && mp3Index < 0;
-  musicStop.textContent = musicShared ? "Stop for everyone" : "Stop";
+  const audioOn = mp3Index >= 0 || !!sharedAudio;
+  musicActions.hidden = !ytPlayer && !audioOn;
+  // In a session only the host can pause and resume the shared audio.
+  musicPause.hidden = !audioOn || (!!sharedAudio && !isHost());
+  const paused = sharedAudio ? sharedAudio.paused : mp3Audio.paused;
+  musicPause.textContent = paused ? "Resume" : "Pause";
+  musicStop.textContent = musicShared && mySession && isHost() ? "Stop for everyone" : "Stop";
+}
+
+// Whether I run the music for my session. Outside a session the music is just mine.
+function isHost() {
+  if (!mySession || !room) return true;
+  return !mySession.o || mySession.o === room.localParticipant.identity;
 }
 
 /* ---------- MP3 files from this device ---------- */
 
-// Files you add are played from your own phone, so only you hear them. (The room
-// has nowhere to keep audio files, and sharing a link someone else controls would
-// make everyone's phone fetch it.) They last until the page is reloaded.
+// Files you add stay on your phone until the page is reloaded. Outside a session they
+// play only for you. In a session the host's tracks are copied to the server for a few
+// hours, so everyone in the session hears them in step; the host pauses and resumes.
 
 const MAX_MP3 = 50;
 const mp3Audio = new Audio();
@@ -2115,6 +2135,7 @@ function markTracks() {
 
 // Silences the MP3 player without touching the YouTube one.
 function stopMp3() {
+  sharedAudio = null;
   mp3Audio.pause();
   mp3Audio.removeAttribute("src");
   mp3Audio.load();
@@ -2122,11 +2143,142 @@ function stopMp3() {
   markTracks();
 }
 
+const MAX_AUDIO_BYTES = 30 * 1024 * 1024; // the server's limit
+
+// Puts the file on the server (it keeps it for a few hours) so everyone can fetch it.
+async function uploadTrack(track) {
+  if (track.remoteId) return track.remoteId;
+  if (!roomToken) throw new Error("Join the room first.");
+  if (track.file.size > MAX_AUDIO_BYTES) {
+    throw new Error("That file is over 30 MB, too big to share. It can still play just for you.");
+  }
+  const response = await fetch("/upload-audio", {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer " + roomToken,
+      "Content-Type": track.file.type || "application/octet-stream",
+    },
+    body: track.file,
+  });
+  if (!response.ok) {
+    let why = "Couldn't share that file.";
+    try {
+      why = (await response.json()).error || why;
+    } catch {
+      // keep the general message
+    }
+    throw new Error(why);
+  }
+  track.remoteId = (await response.json()).id;
+  return track.remoteId;
+}
+
+async function startSharedMp3(index) {
+  const track = mp3Tracks[index];
+  musicNote.textContent = `Getting "${track.name}" ready for everyone…`;
+  let id;
+  try {
+    id = await uploadTrack(track);
+  } catch (error) {
+    musicNote.textContent = error.message;
+    return;
+  }
+  if (!mySession) return; // left the session while it uploaded
+
+  const state = {
+    sid: mySession.id,
+    audio: id,
+    t: syncedNow(),
+    pos: 0,
+    paused: false,
+    title: track.name,
+    by: myMember().name,
+    off: false,
+  };
+  lastMusicT = state.t;
+  publishMusic(state);
+  applyAudioState(state, index);
+}
+
+// Plays, pauses or moves the session's audio to match the newest state: the host's
+// own phone and everyone else's follow the same clock.
+function applyAudioState(state, localIndex = -1) {
+  const wanted = () =>
+    state.paused ? state.pos : state.pos + Math.max(0, (syncedNow() - state.t) / 1000);
+  const sameTrack = musicShared && sharedAudio && sharedAudio.audio === state.audio;
+
+  if (!sameTrack) {
+    stopMusic(); // one thing plays at a time
+    musicShared = true;
+    musicPlayingT = state.t;
+    mp3Audio.src = "/audio/" + state.audio;
+    mp3Index = localIndex;
+  }
+  sharedAudio = state;
+  localMusic = isHost() ? state : localMusic;
+
+  const seek = () => {
+    if (Math.abs(mp3Audio.currentTime - wanted()) > 0.7) {
+      try {
+        mp3Audio.currentTime = wanted();
+      } catch {
+        // the file isn't ready to move yet
+      }
+    }
+  };
+  if (mp3Audio.readyState >= 1) seek();
+  else mp3Audio.addEventListener("loadedmetadata", seek, { once: true });
+
+  if (state.paused) {
+    mp3Audio.pause();
+  } else {
+    mp3Audio.play().catch((error) => {
+      if (error && error.name === "AbortError") return;
+      musicNote.textContent = "Tap Resume to hear the session's music.";
+    });
+  }
+
+  musicToggle.classList.add("playing");
+  musicNote.textContent = isHost()
+    ? `♪ ${state.title || "Audio"} · everyone in this session hears this`
+    : `♪ ${state.title || "Audio"} · ${state.by || "the host"} controls this`;
+  markTracks();
+  refreshMusicActions();
+}
+
+// Pause / Resume: for the whole session when it is the host's shared audio.
+function pausePressed() {
+  if (sharedAudio) {
+    if (!isHost() || !mySession) return;
+    const now = syncedNow();
+    const state = {
+      ...sharedAudio,
+      t: now,
+      pos: mp3Audio.currentTime || 0,
+      paused: !sharedAudio.paused,
+    };
+    lastMusicT = now;
+    publishMusic(state);
+    applyAudioState(state, mp3Index);
+    return;
+  }
+  if (mp3Index < 0) return;
+  if (mp3Audio.paused) mp3Audio.play().catch(() => {});
+  else mp3Audio.pause();
+  refreshMusicActions();
+}
+
 async function playMp3(index) {
   const track = mp3Tracks[index];
   if (!track) {
     stopMusic();
     musicNote.textContent = MUSIC_HINT;
+    return;
+  }
+
+  // In a session, the host's tracks play for everyone.
+  if (mySession && room && isHost()) {
+    startSharedMp3(index);
     return;
   }
 
@@ -2165,6 +2317,8 @@ function addMp3Files(files) {
     mp3Tracks.push({
       name: clean(file.name.replace(/\.[^.]+$/, ""), 80) || "Track",
       url: URL.createObjectURL(file),
+      file,
+      remoteId: null,
     });
     added++;
   }
@@ -2184,7 +2338,16 @@ function addMp3Files(files) {
   }
 }
 
+mp3Audio.addEventListener("play", refreshMusicActions);
+mp3Audio.addEventListener("pause", refreshMusicActions);
+
 mp3Audio.addEventListener("ended", () => {
+  if (sharedAudio && !isHost()) {
+    // The host decides what comes next; the next track will arrive on its own.
+    stopMusic();
+    musicNote.textContent = "The music finished.";
+    return;
+  }
   if (mp3Index + 1 < mp3Tracks.length) playMp3(mp3Index + 1);
   else {
     stopMusic();
@@ -2269,13 +2432,18 @@ function parseMusic(attrs, sid) {
     const video = /^[\w-]{11}$/.test(data.v || "") ? data.v : null;
     const list = /^[\w-]+$/.test(data.l || "") ? data.l : null;
     const off = !!data.off;
-    if (!off && !video && !list) return null;
+    const audio = /^[a-f0-9]{24}$/.test(data.a || "") ? data.a : null;
+    const pos = Number(data.pos) >= 0 && Number(data.pos) < 86400 ? Number(data.pos) : 0;
+    if (!off && !video && !list && !audio) return null;
     return {
       sid,
       t,
       video,
       list,
       off,
+      audio,
+      pos,
+      paused: !!data.pp,
       title: clean(String(data.n || ""), 80),
       by: clean(String(data.by || ""), 50),
     };
@@ -2293,6 +2461,9 @@ async function publishMusic(state) {
           sid: state.sid,
           v: state.video || "",
           l: state.list || "",
+          a: state.audio || "",
+          pos: state.pos || 0,
+          pp: state.paused ? 1 : 0,
           t: state.t,
           n: state.title || "",
           by: state.by || "",
@@ -2319,6 +2490,10 @@ function syncMusic(sessions) {
       stopMusic();
       musicNote.textContent = "The music was stopped.";
     }
+    return;
+  }
+  if (state.audio) {
+    applyAudioState(state);
     return;
   }
   playTrack({ video: state.video, list: state.list }, true, state.t);
@@ -2386,7 +2561,10 @@ async function playTrack(found, shared, t) {
       onReady: (event) => {
         event.target.playVideo();
         musicToggle.classList.add("playing");
-        musicNote.textContent = MUSIC_NOTE;
+        musicNote.textContent =
+          !mySession || musicShared || isHost()
+            ? MUSIC_NOTE
+            : "Only you hear this. The host shares the session's music.";
       },
       onStateChange: (event) => {
         if (event.data === 1) noteTitle(); // 1 = playing
@@ -2417,7 +2595,7 @@ async function playMusic(source) {
     // remembering the last link is optional
   }
 
-  if (mySession) {
+  if (mySession && isHost()) {
     const state = {
       sid: mySession.id,
       video: found.video,
@@ -2437,7 +2615,7 @@ async function playMusic(source) {
 
 // Stop: for everyone if the music is the session's, otherwise just for me.
 function stopPressed() {
-  if (musicShared && mySession) {
+  if (musicShared && mySession && isHost()) {
     const state = {
       sid: mySession.id,
       video: null,
@@ -2575,6 +2753,7 @@ musicToggle.addEventListener("click", () =>
 $("musicClose").addEventListener("click", minimizeMusic);
 musicSphereBtn.addEventListener("click", toggleSphere);
 musicStop.addEventListener("click", stopPressed);
+musicPause.addEventListener("click", pausePressed);
 musicAdd.addEventListener("click", () => musicFiles.click());
 musicFiles.addEventListener("change", () => {
   addMp3Files(musicFiles.files);

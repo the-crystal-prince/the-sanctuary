@@ -67,3 +67,6 @@ The note bubble in the room controls opens a card where you paste a YouTube link
 ## Adding rooms
 
 Add the room name to `ALLOWED_ROOMS` in `server.js`, and pass that name from the page.
+
+## Session music
+In a session, only the host (whoever started it) controls the music. Tracks the host adds from their phone are uploaded to the server's temporary folder (`POST /upload-audio`, room login required, up to 30 MB, 30 files, cleared after 8 hours or on restart) and everyone in the session hears them in step through `GET /audio/:id`. The host can pause and resume for everyone. Anyone else's tracks and YouTube links play only for them.

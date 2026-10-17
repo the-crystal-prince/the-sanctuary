@@ -1,7 +1,10 @@
 const express = require("express");
 const path = require("path");
 const dotenv = require("dotenv");
-const { AccessToken } = require("livekit-server-sdk");
+const fs = require("fs");
+const os = require("os");
+const crypto = require("crypto");
+const { AccessToken, TokenVerifier } = require("livekit-server-sdk");
 
 dotenv.config();
 
@@ -30,6 +33,87 @@ app.get("/health", (req, res) => {
 app.get("/time", (req, res) => {
   res.set("Cache-Control", "no-store");
   res.json({ now: Date.now() });
+});
+
+
+// ---- Audio the host adds for a session ----
+// Kept only for the length of a meditation: files live in the server's temporary
+// folder, so they are cleared when the server restarts and after a few hours.
+// Only people who are in the room (they hold a valid room token) can add one.
+const AUDIO_DIR = path.join(os.tmpdir(), "sanctuary-audio");
+const AUDIO_TTL_MS = 8 * 60 * 60 * 1000;
+const MAX_AUDIO_FILES = 30;
+const MAX_AUDIO_BYTES = 30 * 1024 * 1024;
+const audioFiles = new Map(); // id -> { file, type, at }
+
+fs.rmSync(AUDIO_DIR, { recursive: true, force: true });
+fs.mkdirSync(AUDIO_DIR, { recursive: true });
+
+function dropAudio(id) {
+  const item = audioFiles.get(id);
+  if (!item) return;
+  audioFiles.delete(id);
+  fs.rm(item.file, { force: true }, () => {});
+}
+
+setInterval(() => {
+  const old = Date.now() - AUDIO_TTL_MS;
+  for (const [id, item] of audioFiles) if (item.at < old) dropAudio(id);
+}, 30 * 60 * 1000).unref();
+
+// What kind of audio is this? Looked at from the first bytes, not the file name.
+function sniffAudio(buf) {
+  if (buf.length < 12) return null;
+  if (buf.toString("latin1", 0, 3) === "ID3" || (buf[0] === 0xff && (buf[1] & 0xe0) === 0xe0)) {
+    return { ext: "mp3", type: "audio/mpeg" };
+  }
+  if (buf.toString("latin1", 4, 8) === "ftyp") return { ext: "m4a", type: "audio/mp4" };
+  if (buf.toString("latin1", 0, 4) === "OggS") return { ext: "ogg", type: "audio/ogg" };
+  if (buf.toString("latin1", 0, 4) === "RIFF") return { ext: "wav", type: "audio/wav" };
+  if (buf.toString("latin1", 0, 4) === "fLaC") return { ext: "flac", type: "audio/flac" };
+  return null;
+}
+
+app.post(
+  "/upload-audio",
+  express.raw({ type: () => true, limit: MAX_AUDIO_BYTES }),
+  async (req, res) => {
+    try {
+      const { LIVEKIT_API_KEY, LIVEKIT_API_SECRET } = process.env;
+      const bearer = String(req.get("authorization") || "").replace(/^Bearer\s+/i, "");
+      if (!bearer || !LIVEKIT_API_KEY || !LIVEKIT_API_SECRET) {
+        return res.status(401).json({ error: "Join the room first." });
+      }
+      try {
+        await new TokenVerifier(LIVEKIT_API_KEY, LIVEKIT_API_SECRET).verify(bearer);
+      } catch {
+        return res.status(401).json({ error: "Your room login has expired." });
+      }
+
+      const body = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+      const kind = sniffAudio(body);
+      if (!kind) return res.status(415).json({ error: "That doesn't look like an audio file." });
+
+      while (audioFiles.size >= MAX_AUDIO_FILES) {
+        dropAudio(audioFiles.keys().next().value); // the oldest
+      }
+      const id = crypto.randomBytes(12).toString("hex");
+      const file = path.join(AUDIO_DIR, `${id}.${kind.ext}`);
+      await fs.promises.writeFile(file, body);
+      audioFiles.set(id, { file, type: kind.type, at: Date.now() });
+      res.json({ id });
+    } catch (error) {
+      console.error("Audio upload failed:", error.message);
+      res.status(500).json({ error: "Could not store the audio." });
+    }
+  },
+);
+
+// Supports ranges, so phones can start part-way in and seek.
+app.get("/audio/:id", (req, res) => {
+  const item = /^[a-f0-9]{24}$/.test(req.params.id) && audioFiles.get(req.params.id);
+  if (!item) return res.status(404).end();
+  res.type(item.type).set("Cache-Control", "private, max-age=3600").sendFile(item.file);
 });
 
 // Tells the page whether LINE login is set up.
