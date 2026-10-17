@@ -1063,6 +1063,11 @@ body.ui-hidden .people {
   font-size: 13px;
 }
 
+.mc-rejoin {
+  border-color: rgba(190, 210, 255, 0.55);
+  color: #fff;
+}
+
 .mc-note {
   margin: 8px 16px 0;
   font-size: 12px;

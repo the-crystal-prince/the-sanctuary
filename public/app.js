@@ -97,6 +97,7 @@ const musicSlot = $("musicSlot");
 const musicActions = $("musicActions");
 const musicStop = $("musicStop");
 const musicPause = $("musicPause");
+const musicRejoin = $("musicRejoin");
 const musicSphereBtn = $("musicSphere");
 const musicAdd = $("musicAdd");
 const musicFiles = $("musicFiles");
@@ -2084,6 +2085,27 @@ function refreshMusicActions() {
   const paused = sharedAudio ? sharedAudio.paused : mp3Audio.paused;
   musicPause.textContent = paused ? "Resume" : "Pause";
   musicStop.textContent = musicShared && mySession && isHost() ? "Stop for everyone" : "Stop";
+  // Stopped it just for me? There is always a way back in while the session's music plays.
+  musicRejoin.hidden = !(mySession && !musicShared && sessionMusicNow());
+}
+
+// The music my session is playing right now, or null.
+function sessionMusicNow() {
+  if (!mySession) return null;
+  const mine = getSessions().find((s) => s.id === mySession.id);
+  return mine && mine.music && !mine.music.off ? mine.music : null;
+}
+
+// Back into the session's music, at the point everyone else has reached.
+function rejoinMusic() {
+  const state = sessionMusicNow();
+  if (!state || !mySession) {
+    refreshMusicActions();
+    return;
+  }
+  lastMusicT = Math.max(lastMusicT, state.t);
+  if (state.audio) applyAudioState(state);
+  else playTrack({ video: state.video, list: state.list }, true, state.t);
 }
 
 // Whether I run the music for my session. Outside a session the music is just mine.
@@ -2479,6 +2501,7 @@ async function publishMusic(state) {
 
 // Called whenever people or their attributes change: follow the session's newest music.
 function syncMusic(sessions) {
+  refreshMusicActions(); // the "join the music" button follows the session's state
   if (!mySession) return;
   const mine = sessions.find((s) => s.id === mySession.id);
   const state = mine && mine.music;
@@ -2629,7 +2652,10 @@ function stopPressed() {
     publishMusic(state);
   }
   stopMusic();
-  musicNote.textContent = MUSIC_HINT;
+  musicNote.textContent = sessionMusicNow()
+    ? "You stopped the session's music for yourself. Join back in any time."
+    : MUSIC_HINT;
+  refreshMusicActions();
 }
 
 /* ---------- Bubbles and the quiet view ---------- */
@@ -2754,6 +2780,7 @@ $("musicClose").addEventListener("click", minimizeMusic);
 musicSphereBtn.addEventListener("click", toggleSphere);
 musicStop.addEventListener("click", stopPressed);
 musicPause.addEventListener("click", pausePressed);
+musicRejoin.addEventListener("click", rejoinMusic);
 musicAdd.addEventListener("click", () => musicFiles.click());
 musicFiles.addEventListener("change", () => {
   addMp3Files(musicFiles.files);
