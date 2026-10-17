@@ -14,9 +14,13 @@
 <body class="intro-on">
 <div class="sky" aria-hidden="true"></div>
 
-<!-- Intro: a transparent lotus video plays over the sky, then the room appears. -->
+<!-- The lotus: a transparent looping video. It opens the app, then settles under the moon. -->
+<div class="lotus" id="lotus" aria-hidden="true">
+  <video id="lotusVideo" muted loop playsinline preload="auto" disablepictureinpicture></video>
+</div>
+
+<!-- Intro: the room waits behind this until someone taps to enter. -->
 <div class="intro" id="intro" role="presentation">
-  <video class="intro-video" id="introVideo" muted playsinline preload="auto" disablepictureinpicture aria-hidden="true"></video>
   <div class="intro-note" id="introNote" aria-live="polite"></div>
 </div>
 

@@ -7,9 +7,9 @@ A small shared meditation room: people join the "Forest Room" with audio and vid
 - `server.js`: Express server. Serves `public/` and issues LiveKit access tokens at `POST /get-token`.
 - `public/index.html`, `style.css`, `app.js`: the page. `app.js` loads `livekit-client` from a CDN.
 
-## Intro video
+## Lotus video
 
-`public/intro.js` loops a transparent video over the night sky until someone taps to enter the room. It looks for `public/intro/intro.webm` (VP9 with alpha: Chrome, Android) and `public/intro/intro.mov` (tried first on iPhone, iPad and Safari). Add `?intro=webm`, `?intro=mov` or `?intro=off` to the address to try one or skip it.
+`public/intro.js` loops a transparent lotus video over the night sky until someone taps to enter the room. It then glides down and keeps looping under the moon for as long as the room is open. It uses `public/lotus/lotus.webm` (VP9 with alpha: Chrome, Android) and `public/lotus/lotus.mov` (ProRes 4444, tried first on iPhone, iPad and Safari). Add `?intro=webm`, `?intro=mov` to try one file, `?intro=off` to skip the opening, or `?lotus=off` for no lotus. Size and position under the moon are `ROOM_SCALE` and `HEAD_OFFSET` at the top of `intro.js`.
 
 ## Environment variables
 

@@ -1936,43 +1936,67 @@ body.ui-hidden .people {
 }
 
 
-/* ---------- Intro: the lotus video before the room ---------- */
+/* ---------- The lotus: opens the app, then rests under the moon ---------- */
+
+/* One fixed layer between the sky and the room. The script sizes and places it:
+   centred during the intro, then under the sphere once you are in. */
+.lotus {
+  position: fixed;
+  z-index: 0;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.9s ease;
+}
+
+.lotus.ready {
+  opacity: 1;
+}
+
+/* Settling from the middle of the screen to under the moon. */
+.lotus.gliding {
+  transition:
+    opacity 0.9s ease,
+    left 1.4s var(--ease),
+    top 1.4s var(--ease),
+    width 1.4s var(--ease),
+    height 1.4s var(--ease);
+}
+
+/* The video is cropped to the lotus itself (the rest of its frame is empty). */
+.lotus video {
+  position: absolute;
+  display: block;
+  max-width: none;
+  width: 184.2%;
+  height: 120.2%;
+  left: -42%;
+  top: -12.14%;
+  pointer-events: none;
+}
+
+/* ---------- Intro: the room waits behind the lotus ---------- */
 
 .intro {
   position: fixed;
   inset: 0;
   z-index: 20;
   display: none;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
   cursor: pointer;
   transition: opacity 0.9s var(--ease);
 }
 
 .intro-on .intro {
-  display: flex;
+  display: block;
 }
 
 .intro.leaving {
   opacity: 0;
   pointer-events: none;
-}
-
-.intro-video {
-  display: block;
-  width: min(92vw, 560px);
-  max-height: 70vh;
-  max-height: 70dvh;
-  object-fit: contain;
-  background: transparent;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.6s ease;
-}
-
-.intro-video.ready {
-  opacity: 1;
 }
 
 .intro-note {
@@ -1987,7 +2011,6 @@ body.ui-hidden .people {
   pointer-events: none;
 }
 
-/* The room waits behind the intro, then fades in. */
 .intro-on .stage,
 .intro-on .actions,
 .intro-on .dock,
@@ -2001,4 +2024,16 @@ body.ui-hidden .people {
 .stage,
 .controls {
   transition: opacity 0.9s var(--ease), visibility 0s;
+}
+
+/* Room for the lotus's lower petals under the moon, so they don't crowd the people. */
+.has-lotus .orb-wrap {
+  margin-bottom: min(20vw, 84px, 11vh);
+  margin-bottom: min(20vw, 84px, 11dvh);
+  transition: width 0.9s var(--ease), margin-bottom 0.9s var(--ease);
+}
+
+.has-lotus.in-room .orb-wrap {
+  margin-bottom: min(18vw, 74px, 9.7vh);
+  margin-bottom: min(18vw, 74px, 9.7dvh);
 }
