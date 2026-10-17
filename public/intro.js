@@ -28,7 +28,7 @@ const START_TIMEOUT_MS = 8000; // give up on a file if it hasn't started by then
 // The video frame is mostly empty; the box is cropped to the lotus (see style.css).
 const ASPECT = 1.16; // width / height of that crop
 const HEAD_OFFSET = 0.1216; // how far below the box centre the bloom's heart sits, in box widths
-const ROOM_SCALE = 2.5; // lotus width, in sphere-wrapper widths, under the moon
+const ROOM_SCALE = 5; // lotus width, in sphere-wrapper widths, under the moon
 
 const params = new URLSearchParams(location.search);
 const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;

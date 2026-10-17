@@ -182,8 +182,8 @@ body.ui-hidden .ui {
 
 .orb-wrap {
   position: relative;
-  width: min(46vw, 190px, 24vh);
-  width: min(46vw, 190px, 24dvh);
+  width: min(23vw, 95px, 12vh);
+  width: min(23vw, 95px, 12dvh);
   aspect-ratio: 1;
   transition: width 0.9s var(--ease);
   animation: orb-in 1.6s var(--ease) both;
@@ -1844,8 +1844,8 @@ body.ui-hidden .people {
 /* ---------- After joining: the moon shrinks to make room for people ---------- */
 
 .in-room .orb-wrap {
-  width: min(30vw, 116px, 15vh);
-  width: min(30vw, 116px, 15dvh);
+  width: min(15vw, 58px, 7.5vh);
+  width: min(15vw, 58px, 7.5dvh);
 }
 
 .in-room .join,
@@ -2040,6 +2040,6 @@ body.ui-hidden .people {
 }
 
 .has-lotus.in-room .orb-wrap {
-  margin-bottom: min(18vw, 74px, 9.7vh);
-  margin-bottom: min(18vw, 74px, 9.7dvh);
+  margin-bottom: min(26vw, 106px, 14vh);
+  margin-bottom: min(26vw, 106px, 14dvh);
 }
