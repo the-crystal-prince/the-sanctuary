@@ -81,6 +81,8 @@ const actions = $("actions");
 const actionsToggle = $("actionsToggle");
 const dock = $("dock");
 const dockJoin = $("dockJoin");
+const dockTimer = $("dockTimer");
+const timerList = $("timerList");
 const joinBadge = $("joinBadge");
 const joinList = $("joinList");
 const sessCard = $("sessCard");
@@ -93,6 +95,9 @@ const musicSlot = $("musicSlot");
 const musicActions = $("musicActions");
 const musicStop = $("musicStop");
 const musicSphereBtn = $("musicSphere");
+const musicAdd = $("musicAdd");
+const musicFiles = $("musicFiles");
+const musicTracks = $("musicTracks");
 const musicNote = $("musicNote");
 const chatSheet = $("chatSheet");
 const chatList = $("chatList");
@@ -206,6 +211,7 @@ function setControls(connected) {
     closeMusic();
     closeSessCard();
     closeJoinList();
+    closeTimerList();
     setActionsOpen(false);
   }
   refreshSessions();
@@ -541,6 +547,8 @@ function parseSession(attrs) {
       k: clean(String(data.k || "timer"), 12),
       by: clean(String(data.by || ""), 50),
       title: clean(String(data.title || ""), 80),
+      // Length of a preset timer in seconds. 0 means an open timer that counts up.
+      d: Number.isInteger(data.d) && data.d > 0 && data.d <= 14400 ? data.d : 0,
     };
   } catch {
     return null;
@@ -613,14 +621,25 @@ async function publishSession(session) {
           k: session.k,
           by: session.by,
           title: session.title || "",
+          d: session.d || 0,
         }),
       }
     : { sid: "", sdata: "" };
   await room.localParticipant.setAttributes(attrs);
 }
 
+// "5 min" for whole minutes, otherwise a clock like "1:30".
+function lengthLabel(seconds) {
+  return seconds % 60 === 0 ? `${seconds / 60} min` : formatTime(seconds);
+}
+
+function kindLabel(kind, d) {
+  if (kind !== "timer") return "Guided";
+  return d ? `${lengthLabel(d)} timer` : "Timer only";
+}
+
 function sessionLabel(session) {
-  if (session.k === "timer") return "Timer only";
+  if (session.k === "timer") return kindLabel("timer", session.d);
   return session.title ? `Listening to ${session.title}` : "Guided session";
 }
 
@@ -663,13 +682,141 @@ function setOrb(active, progress) {
   if (progress !== undefined) window.sanctuaryOrb.setProgress(progress);
 }
 
+/* ---------- Bells ---------- */
+
+// The bell is made in the browser (no sound file to load). One strike when a
+// preset timer starts; three slow ones when it ends.
+
+let audioCtx = null;
+
+// Sound has to be switched on by a tap, so this is called from the tap that
+// starts or joins a session. Later calls just wake it if it has gone to sleep.
+function getAudio() {
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!Ctx) return null;
+  try {
+    if (!audioCtx) audioCtx = new Ctx();
+    if (audioCtx.state === "suspended") audioCtx.resume().catch(() => {});
+    return audioCtx;
+  } catch (error) {
+    return null;
+  }
+}
+
+// A bell is a handful of pure tones that aren't neat multiples of each other,
+// each fading away at its own pace: [pitch ratio, loudness, seconds to fade].
+const BELL_PARTIALS = [
+  [1, 1, 6.5],
+  [2, 0.45, 4.2],
+  [2.76, 0.4, 3.2],
+  [5.4, 0.18, 1.8],
+  [8.93, 0.08, 1.0],
+];
+
+function strikeBell(ctx, when, level) {
+  const master = ctx.createGain();
+  master.gain.value = level;
+  master.connect(ctx.destination);
+  for (const [ratio, amp, fade] of BELL_PARTIALS) {
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.value = 392 * ratio;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, when);
+    gain.gain.exponentialRampToValueAtTime(amp, when + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.0001, when + fade);
+    osc.connect(gain);
+    gain.connect(master);
+    osc.start(when);
+    osc.stop(when + fade + 0.05);
+  }
+}
+
+function ringBell(kind) {
+  const ctx = getAudio();
+  if (!ctx) return;
+  const strikes = kind === "end" ? 3 : 1;
+  const first = ctx.currentTime + 0.05;
+  for (let i = 0; i < strikes; i++) strikeBell(ctx, first + i * 2.6, 0.3);
+}
+
+/* ---------- Preset timers ---------- */
+
+const TIMER_PRESETS = [
+  { d: 0, name: "Open timer", sub: "Counts up, no end" },
+  { d: 60, name: "1 minute", sub: "Bell at the start and the end" },
+  { d: 300, name: "5 minutes", sub: "Bell at the start and the end" },
+  { d: 1200, name: "20 minutes", sub: "Bell at the start and the end" },
+];
+
+function renderTimerList() {
+  timerList.replaceChildren(
+    ...TIMER_PRESETS.map((preset, index) => {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "jl-item";
+      item.setAttribute("role", "menuitem");
+      item.style.setProperty("--sc", DEFAULT_ME);
+      item.style.animationDelay = index * 60 + "ms";
+
+      const dot = document.createElement("span");
+      dot.className = "jl-dot";
+
+      const text = document.createElement("span");
+      const name = document.createElement("span");
+      name.className = "jl-name";
+      name.textContent = preset.name;
+      const sub = document.createElement("span");
+      sub.className = "jl-sub";
+      sub.textContent = preset.sub;
+      text.append(name, sub);
+
+      item.append(dot, text);
+      item.addEventListener("click", () => {
+        closeTimerList();
+        startSession(preset.d);
+      });
+      return item;
+    }),
+  );
+}
+
+function openTimerList() {
+  closeJoinList();
+  closeSessCard();
+  renderTimerList();
+  timerList.hidden = false;
+  dockTimer.setAttribute("aria-expanded", "true");
+}
+
+function closeTimerList() {
+  timerList.hidden = true;
+  dockTimer.setAttribute("aria-expanded", "false");
+}
+
+// The countdown reached zero: ring, then finish the way pressing End would.
+function finishTimer() {
+  const sid = mySession.id;
+  ringBell("end");
+  message.textContent = "The bell has rung 🙏";
+  setTimeout(() => {
+    if (mySession && mySession.id === sid) endMySession();
+  }, 1200);
+}
+
 function renderClock() {
   if (!mySession) return;
   const t = elapsedOf(mySession);
-  clock.textContent = formatTime(t);
-  // The liquid in the moon rises slowly as the meditation goes on.
+  const d = mySession.d || 0;
+  clock.textContent = formatTime(d ? Math.max(0, d - t) : t);
+  // The liquid in the moon rises as the meditation goes on: by the timer's
+  // length when there is one, otherwise slowly without an end.
   if (window.sanctuaryOrb) {
-    window.sanctuaryOrb.setProgress(1 - Math.exp(-t / 1500));
+    window.sanctuaryOrb.setProgress(d ? Math.min(1, t / d) : 1 - Math.exp(-t / 1500));
+  }
+  if (d && t >= d && !mySession.finishing) {
+    mySession.finishing = true;
+    finishTimer();
   }
 }
 
@@ -678,15 +825,21 @@ function secondTick() {
   renderClock();
   if (!joinList.hidden) {
     joinList.querySelectorAll(".jl-sub").forEach((el) => {
-      el.textContent = subLine(Number(el.dataset.t), Number(el.dataset.n), el.dataset.k);
+      el.textContent = subLine(
+        Number(el.dataset.t),
+        Number(el.dataset.n),
+        el.dataset.k,
+        Number(el.dataset.d),
+      );
     });
   }
   if (!sessCard.hidden) refreshSessCard();
 }
 
-function subLine(t, n, kind) {
-  const label = kind === "timer" ? "Timer only" : "Guided";
-  const time = formatTime(Math.max(0, (syncedNow() - t) / 1000));
+function subLine(t, n, kind, d) {
+  const label = kindLabel(kind, d);
+  const elapsed = Math.max(0, (syncedNow() - t) / 1000);
+  const time = d ? `${formatTime(Math.max(0, d - elapsed))} left` : formatTime(elapsed);
   return `${time} · ${label} · ${n} ${n === 1 ? "person" : "people"}`;
 }
 
@@ -694,9 +847,24 @@ function subLine(t, n, kind) {
 async function enterSession(session, starting) {
   if (!room) return;
   if (mySession && mySession.id === session.id) return;
+
+  // Sound can only be switched on by a tap, and this runs straight from one.
+  // Doing it now is what lets the end bell ring later with nobody touching the screen.
+  getAudio();
+
+  // A timer that has run out can't be joined (its owner may not have left yet).
+  if (session.d && elapsedOf(session) >= session.d) {
+    message.textContent = "That timer has already finished.";
+    closeJoinList();
+    closeSessCard();
+    refreshSessions();
+    return;
+  }
+
   if (mySession) teardownLocalSession(); // switching: leave the old one quietly
 
   closeJoinList();
+  closeTimerList();
   closeSessCard();
 
   mySession = { ...session, joinedAt: syncedNow() };
@@ -713,6 +881,9 @@ async function enterSession(session, starting) {
   message.textContent = "You'll hear the people in this session, and they'll hear you.";
   refreshSessions();
 
+  // A preset timer opens with a bell (also for someone who joins in its first moments).
+  if (session.d && elapsedOf(mySession) < 5) ringBell("start");
+
   try {
     await publishSession(session);
   } catch (error) {
@@ -723,8 +894,10 @@ async function enterSession(session, starting) {
   }
 }
 
-function startSession() {
+// seconds > 0 starts a preset timer that counts down and rings; 0 is the open timer.
+function startSession(seconds) {
   if (!room || mySession) return;
+  const d = Number(seconds) > 0 ? Math.floor(Number(seconds)) : 0;
   enterSession(
     {
       id: randomId() + randomId().slice(0, 4),
@@ -733,6 +906,7 @@ function startSession() {
       k: "timer",
       by: myMember().name,
       title: "",
+      d,
     },
     true,
   );
@@ -747,6 +921,7 @@ function joinSession(session) {
       k: session.k,
       by: session.by,
       title: session.title,
+      d: session.d || 0,
     },
     false,
   );
@@ -881,6 +1056,7 @@ function updateDock(sessions) {
   if (dock.dataset.mode !== mode) {
     dock.dataset.mode = mode;
     closeJoinList();
+    closeTimerList();
   }
 
   joinBadge.textContent = String(sessions.length);
@@ -912,7 +1088,8 @@ function renderJoinList(sessions) {
       sub.dataset.t = String(session.t);
       sub.dataset.n = String(session.members.length);
       sub.dataset.k = session.k;
-      sub.textContent = subLine(session.t, session.members.length, session.k);
+      sub.dataset.d = String(session.d || 0);
+      sub.textContent = subLine(session.t, session.members.length, session.k, session.d);
       text.append(name, sub);
 
       if (session.music && !session.music.off) {
@@ -936,6 +1113,7 @@ function renderJoinList(sessions) {
 function openJoinList() {
   const sessions = getSessions();
   if (!sessions.length) return;
+  closeTimerList();
   renderJoinList(sessions);
   joinList.hidden = false;
   dockJoin.setAttribute("aria-expanded", "true");
@@ -980,8 +1158,12 @@ function fillSessCard(session) {
     $("scMusic").textContent = "♪ " + (session.music.title || "Music playing");
   }
   const n = session.members.length;
+  const elapsed = elapsedOf(session);
+  const time = session.d
+    ? `${formatTime(Math.max(0, session.d - elapsed))} left`
+    : formatTime(elapsed);
   $("scMeta").textContent =
-    `${formatTime(elapsedOf(session))} · ${n} meditating` +
+    `${time} · ${n} meditating` +
     (n > 1 ? ": " + session.members.map((m) => m.name).join(", ") : "");
 
   const joinBtn = $("scJoin");
@@ -1607,6 +1789,7 @@ async function initLine() {
 // visible as a soft-edged circle in the sphere.
 
 const MUSIC_NOTE = "Plays through YouTube's own player.";
+const MUSIC_HINT = "Paste a YouTube link, or add MP3 files from your phone.";
 
 function loadYouTubeApi() {
   if (ytApi) return ytApi;
@@ -1718,9 +1901,138 @@ function showStage() {
 }
 
 function refreshMusicActions() {
-  musicActions.hidden = !ytPlayer;
+  musicActions.hidden = !ytPlayer && mp3Index < 0;
   musicStop.textContent = musicShared ? "Stop for everyone" : "Stop";
 }
+
+/* ---------- MP3 files from this device ---------- */
+
+// Files you add are played from your own phone, so only you hear them. (The room
+// has nowhere to keep audio files, and sharing a link someone else controls would
+// make everyone's phone fetch it.) They last until the page is reloaded.
+
+const MAX_MP3 = 50;
+const mp3Audio = new Audio();
+mp3Audio.preload = "auto";
+let mp3Tracks = []; // { name, url }
+let mp3Index = -1; // the track playing now, or -1
+
+// Builds the list. Only needed when files are added: tapping a track just moves the
+// highlight (markTracks), so a long list keeps its scroll position.
+function renderTracks() {
+  const scrolled = musicTracks.scrollTop;
+  musicTracks.hidden = mp3Tracks.length === 0;
+  musicTracks.replaceChildren(
+    ...mp3Tracks.map((track, index) => {
+      const row = document.createElement("li");
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "mc-track";
+      button.textContent = "♪ " + track.name;
+      button.addEventListener("click", () => playMp3(index));
+      row.append(button);
+      return row;
+    }),
+  );
+  markTracks();
+  musicTracks.scrollTop = scrolled;
+}
+
+// Highlights the track that is playing.
+function markTracks() {
+  musicTracks.querySelectorAll(".mc-track").forEach((button, index) => {
+    if (index === mp3Index) button.setAttribute("aria-current", "true");
+    else button.removeAttribute("aria-current");
+  });
+}
+
+// Silences the MP3 player without touching the YouTube one.
+function stopMp3() {
+  mp3Audio.pause();
+  mp3Audio.removeAttribute("src");
+  mp3Audio.load();
+  mp3Index = -1;
+  markTracks();
+}
+
+async function playMp3(index) {
+  const track = mp3Tracks[index];
+  if (!track) {
+    stopMusic();
+    musicNote.textContent = MUSIC_HINT;
+    return;
+  }
+
+  stopMusic(); // one thing plays at a time: this also stops YouTube
+  mp3Index = index;
+  mp3Audio.src = track.url;
+  markTracks();
+  musicToggle.classList.add("playing");
+  musicNote.textContent = "♪ " + track.name + " · only you hear this";
+  refreshMusicActions();
+
+  try {
+    await mp3Audio.play();
+  } catch (error) {
+    // Switching tracks quickly cancels the earlier play() call. That isn't a failure,
+    // and by now another track owns the player.
+    if (mp3Index !== index || (error && error.name === "AbortError")) return;
+    // Otherwise the phone wants a tap before it will start sound.
+    musicNote.textContent = "Tap a track to start the music.";
+    mp3Index = -1;
+    musicToggle.classList.remove("playing");
+    markTracks();
+    refreshMusicActions();
+  }
+}
+
+function addMp3Files(files) {
+  let added = 0;
+  let skipped = 0;
+  for (const file of Array.from(files || [])) {
+    const isAudio = (file.type || "").startsWith("audio/") || /\.mp3$/i.test(file.name);
+    if (!isAudio || mp3Tracks.length >= MAX_MP3) {
+      skipped++;
+      continue;
+    }
+    mp3Tracks.push({
+      name: clean(file.name.replace(/\.[^.]+$/, ""), 80) || "Track",
+      url: URL.createObjectURL(file),
+    });
+    added++;
+  }
+  renderTracks();
+
+  // Start the first new track if nothing else is playing. (This sets the note
+  // straight away, so the skipped-files notice goes in after it.)
+  if (added && !ytPlayer && mp3Index < 0) playMp3(mp3Tracks.length - added);
+
+  if (skipped) {
+    const why = `${skipped} skipped (MP3 files only, up to ${MAX_MP3})`;
+    musicNote.textContent = !added
+      ? `Nothing added: ${why}`
+      : mp3Index >= 0
+        ? `${musicNote.textContent} · ${why}`
+        : `Added ${added}. ${why}`;
+  }
+}
+
+mp3Audio.addEventListener("ended", () => {
+  if (mp3Index + 1 < mp3Tracks.length) playMp3(mp3Index + 1);
+  else {
+    stopMusic();
+    musicNote.textContent = MUSIC_HINT;
+  }
+});
+
+mp3Audio.addEventListener("error", () => {
+  if (mp3Index < 0) return; // errors from clearing the source don't count
+  const bad = mp3Tracks[mp3Index];
+  stopMusic();
+  musicNote.textContent = bad
+    ? `Couldn't play "${bad.name}". Try another file.`
+    : "Couldn't play that file.";
+});
 
 // Stops the sound and clears the player. Doesn't touch the card.
 function stopMusic() {
@@ -1736,6 +2048,7 @@ function stopMusic() {
   musicStage.replaceChildren();
   musicStage.hidden = true;
   musicSlot.hidden = true;
+  stopMp3();
   musicToggle.classList.remove("playing");
   musicShared = false;
   musicPlayingT = 0;
@@ -1767,7 +2080,7 @@ function closeMusic() {
   stopMusic();
   musicCard.hidden = true;
   musicToggle.setAttribute("aria-expanded", "false");
-  musicNote.textContent = MUSIC_NOTE;
+  musicNote.textContent = MUSIC_HINT;
 }
 
 function toggleSphere() {
@@ -1971,7 +2284,7 @@ function stopPressed() {
     publishMusic(state);
   }
   stopMusic();
-  musicNote.textContent = MUSIC_NOTE;
+  musicNote.textContent = MUSIC_HINT;
 }
 
 /* ---------- Bubbles and the quiet view ---------- */
@@ -2004,6 +2317,10 @@ document.addEventListener("click", (event) => {
     closeJoinList();
     return;
   }
+  if (!timerList.hidden && !target.closest("#timerList, #dockTimer")) {
+    closeTimerList();
+    return;
+  }
 
   if (!document.body.classList.contains("in-room")) return;
   if (
@@ -2021,6 +2338,7 @@ document.addEventListener("keydown", (event) => {
   if (!summary.hidden) hideSummary();
   else if (!sessCard.hidden) closeSessCard();
   else if (!joinList.hidden) closeJoinList();
+  else if (!timerList.hidden) closeTimerList();
   else if (!chatSheet.hidden) closeChat();
   else if (!musicCard.hidden) minimizeMusic();
 });
@@ -2044,8 +2362,14 @@ $("scJoin").addEventListener("click", () => {
   if (session) joinSession(session);
 });
 
-$("dockMeditate").addEventListener("click", startSession);
-$("dockStart").addEventListener("click", startSession);
+$("dockMeditate").addEventListener("click", () => startSession(0));
+$("dockStart").addEventListener("click", () => startSession(0));
+dockTimer.addEventListener("click", () =>
+  timerList.hidden ? openTimerList() : closeTimerList(),
+);
+
+// Backup for the bells: the first tap anywhere switches sound on.
+document.addEventListener("pointerdown", () => getAudio(), { once: true });
 $("dockEnd").addEventListener("click", endMySession);
 dockJoin.addEventListener("click", () =>
   joinList.hidden ? openJoinList() : closeJoinList(),
@@ -2084,6 +2408,11 @@ musicToggle.addEventListener("click", () =>
 $("musicClose").addEventListener("click", minimizeMusic);
 musicSphereBtn.addEventListener("click", toggleSphere);
 musicStop.addEventListener("click", stopPressed);
+musicAdd.addEventListener("click", () => musicFiles.click());
+musicFiles.addEventListener("change", () => {
+  addMp3Files(musicFiles.files);
+  musicFiles.value = ""; // so the same file can be picked again later
+});
 musicForm.addEventListener("submit", (event) => {
   event.preventDefault();
   playMusic(musicInput.value);
@@ -2091,6 +2420,9 @@ musicForm.addEventListener("submit", (event) => {
 
 // Keep the player lined up with its slot or the sphere as the page changes size.
 window.addEventListener("resize", layoutStage);
+// The card pops in with a small scale animation, so where its slot is changes while
+// that runs. Line the player up again once it has settled.
+musicCard.addEventListener("animationend", layoutStage);
 if (window.ResizeObserver) {
   const watcher = new ResizeObserver(layoutStage);
   watcher.observe(musicCard);

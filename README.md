@@ -51,12 +51,17 @@ Setup in the [LINE Developers Console](https://developers.line.biz/console/):
 
 The server checks each LINE login with LINE before trusting the name and photo.
 
+## Timers
+
+The Timer bubble in the lower dock starts a preset session: 1, 5 or 20 minutes, or an open timer that counts up. A bell rings at the start and three slow strikes ring at the end, and the session finishes by itself. The length is shared, so anyone who joins sees the same countdown and the same end. The bell is made in the browser (no sound file). Sound has to be switched on by a tap, which starting or joining a session counts as. The presets live in `TIMER_PRESETS` in `public/app.js`.
+
 ## Music
 
 The note bubble in the room controls opens a card where you paste a YouTube link (video, playlist or Shorts).
 
 - **In a session** the music is shared. Whoever presses play starts it for everyone in that session, late joiners start part-way in, and "Stop for everyone" ends it. Sessions with music show "♪ title" in the join list and the session card. The state is kept in participant attributes (`music`), like the session itself, so the server stores nothing.
 - **Outside a session** it plays for you only.
+- **MP3 files**: "Add MP3 files" in the card plays files from your own phone (up to 50, one after another). They play on your device only, so nobody else in the session hears them, and they last until the page is reloaded. Nothing is uploaded.
 - **Minimizing** the card or the controls never interrupts it. YouTube doesn't allow hiding the picture to play only the sound, so with the card minimized the video stays visible as a soft-edged circle over the sphere. The circle button in the card shows it there on purpose.
 
 ## Adding rooms

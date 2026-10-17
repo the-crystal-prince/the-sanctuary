@@ -91,6 +91,7 @@
 <!-- Dock: the bottom-centre bubbles for starting or joining a meditation. -->
 <nav class="dock ui" id="dock" data-mode="hidden" aria-label="Meditation">
   <div class="join-list" id="joinList" role="menu" hidden></div>
+  <div class="join-list timer-list" id="timerList" role="menu" aria-label="Choose a timer" hidden></div>
   <button class="bubble dock-btn" id="dockMeditate" type="button" aria-label="Meditate">
     <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9.2"/><path d="M7.7 10.4q1.5 1.6 3 0M13.3 10.4q1.5 1.6 3 0"/><path d="M8.6 14.4q3.4 3 6.8 0"/></svg>
     <span class="key-lbl">Meditate</span>
@@ -98,6 +99,10 @@
   <button class="bubble dock-btn" id="dockStart" type="button" aria-label="Start a session">
     <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9.2"/><path d="M12 7.5v9M7.5 12h9"/></svg>
     <span class="key-lbl">Start</span>
+  </button>
+  <button class="bubble dock-btn" id="dockTimer" type="button" aria-label="Timer with bells" aria-expanded="false" aria-haspopup="menu">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 1.5h-15z"/><path d="M12 3.2V5M10 20.2a2 2 0 0 0 4 0"/></svg>
+    <span class="key-lbl">Timer</span>
   </button>
   <button class="bubble dock-btn" id="dockJoin" type="button" aria-label="Join a session" aria-expanded="false" aria-haspopup="menu">
     <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="12" r="5.4"/><circle cx="15.6" cy="12" r="5.4"/></svg>
@@ -167,11 +172,16 @@
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>
     </button>
   </form>
+  <div class="mc-files">
+    <button class="mc-file-btn" id="musicAdd" type="button">＋ Add MP3 files</button>
+    <input id="musicFiles" type="file" accept="audio/mpeg,audio/*,.mp3" multiple hidden>
+  </div>
+  <ol class="mc-tracks" id="musicTracks" aria-label="Your MP3 files" hidden></ol>
   <div class="mc-slot" id="musicSlot" hidden></div>
   <div class="mc-actions" id="musicActions" hidden>
     <button class="mc-stop" id="musicStop" type="button">Stop</button>
   </div>
-  <p class="mc-note" id="musicNote" role="status">Plays through YouTube's own player.</p>
+  <p class="mc-note" id="musicNote" role="status">Paste a YouTube link, or add MP3 files from your phone.</p>
 </aside>
 
 <!-- The player itself: one fixed layer that is never moved, so it keeps playing
